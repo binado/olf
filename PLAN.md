@@ -21,50 +21,97 @@ would not know on its own.
   Overleaf, not in git.
 - There is no public REST API. v1 stays git-only.
 
-## Configuration: `.overleafrc`
+## Workspace layout
 
-Per-project TOML file at the checkout root, written by `olf init`.
-`olf` finds it by walking up from the cwd (like git finds `.git`),
-so no global registry is needed.
+`olf` manages a **workspace**: any directory holding olf's state plus the
+Overleaf checkout. The workspace may itself be the user's own git repo (e.g.
+the paper's analysis code), so olf must leave **no tracked footprint** there.
+
+```
+workspace/              # any dir; possibly the user's own git repo
+  .olf/
+    config.toml         # olf config
+    build/              # build output, never inside the checkout
+  paper/                # Overleaf git checkout (`project_dir`)
+```
+
+- The checkout is **visible** (not under `.olf/`): ripgrep and agent search
+  tools skip dot-directories by default, and the paper is what gets edited.
+- The checkout lives **inside** the workspace, not in a central `~/.olf/`:
+  agent sandboxes only allow free writes in the working directory, cloud
+  sessions don't persist `~`, search is rooted at the cwd, and a shared
+  checkout would let concurrent sessions trample each other.
+- `olf` finds the workspace by walking up from the cwd looking for
+  `.olf/config.toml`, so commands work from the root or inside `paper/`.
+
+### Configuration: `.olf/config.toml`
 
 ```toml
 project_id = "64f0c0ffee..."
+project_dir = "paper"      # relative to workspace; absolute path allowed (warns)
 
 [build]
 main = "main.tex"          # auto-detected by `olf init` (file with \documentclass)
 compiler = "pdflatex"      # pdflatex | xelatex | lualatex — mirror Overleaf's setting
 engine = "auto"            # auto | latexmk | tectonic
-outdir = ".olf/build"
 
 [fmt]
 enabled = false            # opt-in per project, see `olf fmt`
 wrap = false
 ```
 
-The token is **never** stored in the rc file or the git remote URL.
+The token is **never** stored in the config or the git remote URL.
+
+### When the workspace is a git repo
+
+The Overleaf checkout must remain its own repo (the bridge needs its own
+linear `master`), and the user most likely doesn't want olf files committed to
+their repo. `olf init` detects an enclosing repo and:
+
+- Appends `/.olf/` and `/paper/` to that repo's **`.git/info/exclude`**
+  (local-only, never committed; resolve the path with
+  `git rev-parse --git-path info/exclude` so worktrees work). This also stops
+  `git add .` from recording `paper/` as an embedded repository.
+- Writes a workspace-root **`.ignore`** containing `!/paper/` so ripgrep-based
+  tools still search the paper (`.ignore` takes precedence over git ignores and
+  git itself does not read it). The `.ignore` file is itself added to
+  `info/exclude`. If a tracked `.ignore` already exists, don't modify it — warn
+  instead. **Needs verification** against Claude Code's Grep/Glob tools.
+- Opt-in alternative for users who *do* want the outer repo to pin paper
+  versions (e.g. tag code + paper at submission): `olf init --submodule`.
+  Not v1.
+
+### Adopting an existing clone
+
+Running `olf init` inside an existing Overleaf clone makes the clone itself the
+workspace with `project_dir = "."`. In that case `.olf/` sits inside the
+Overleaf repo and is added to *its* `.git/info/exclude`, so it never reaches
+Overleaf.
 
 ## Commands
 
 ### `olf init [--id <id> | --url <overleaf-url>] [dir]`
 
-One command to make a directory an olf project, cloning if needed:
+One command to create or repair a workspace, cloning if needed:
 
-- **With `--id`/`--url`**: clone into `dir` (default: project name/ID), then
-  set up. Accepts any Overleaf project URL (extract the ID).
-- **Without**: `dir` (default: cwd) must already be an Overleaf clone; the
-  project ID is read from `git remote get-url origin`.
+- **With `--id`/`--url`**: create the workspace at `dir` (default: cwd) and
+  clone into `dir/<project_dir>`. Accepts any Overleaf project URL.
+- **Without**: if `.olf/config.toml` exists but the checkout is missing, clone
+  it; if `dir` is an existing Overleaf clone, adopt it (see above).
 - **Idempotent**: re-running repairs/updates the setup and never overwrites
-  user-edited rc values. If `dir` is a clone of a *different* project, error.
+  user-edited config values. If the checkout belongs to a *different* project,
+  error.
 
 Setup steps:
 
 - Token from `--token` or `OVERLEAF_GIT_TOKEN`; stored via a git credential
   helper (Keychain on macOS), not embedded in `.git/config`.
-- Write `.overleafrc` (auto-detect main file).
-- Configure git for the bridge: `pull.rebase=true`; pre-push hook that rejects
-  force pushes and non-`master` branches.
-- Add `.olf/` and LaTeX build artifacts to `.git/info/exclude` (local only, so
-  no `.gitignore` leaks into the Overleaf project).
+- Write `.olf/config.toml` (auto-detect main file).
+- Configure the checkout for the bridge: `pull.rebase=true`; pre-push hook that
+  rejects force pushes and non-`master` branches.
+- Add stray LaTeX artifacts (`*.aux`, `*.log`, …) to the checkout's
+  `.git/info/exclude`, in case someone builds manually inside it.
+- Handle an enclosing git repo as described above.
 
 ### `olf status`
 
@@ -86,7 +133,7 @@ Compile locally for a fast edit → compile → fix loop.
   itself uses latexmk, so results match best), then **tectonic**.
 - Warn when falling back to tectonic for a non-XeTeX project, since its engine
   differs.
-- Output goes to `outdir` (`.olf/build`), never the working tree.
+- Output goes to `.olf/build/`, never the checkout.
 - Condense the log into `file:line: message` errors and warnings; full log
   path printed for drill-down.
 - Caveat: Overleaf pins a TeX Live version, so a local pass does not guarantee
@@ -101,18 +148,24 @@ Format `.tex` files with [tex-fmt](https://github.com/WGUNDERWOOD/tex-fmt).
 - Default: only `.tex` files changed in the working tree. `--all`: whole
   project (for the one-time "format everything" commit).
 - `--check`: report without writing (usable before push / in the build loop).
-- Options come from `.overleafrc`; if the project has a `tex-fmt.toml`, defer
-  to it instead.
+- Options come from `.olf/config.toml`; if the project has a `tex-fmt.toml`,
+  defer to it instead.
 - If `tex-fmt` is not on PATH, fail with install hints.
+
+### `olf edit`
+
+Open the checkout in `$VISUAL` (falling back to `$EDITOR`).
 
 ### `olf open`
 
 Open `https://www.overleaf.com/project/<id>` in the browser.
 
-### `olf skill install`
+### `olf skill install [--project]`
 
-Install the bundled skills into the project (`.claude/skills/`).
-`olf skill list` shows what is bundled.
+Install the bundled skills. Default: user-level (`~/.claude/skills/`) — skills
+are read-only, so living outside the workspace is fine and keeps the user's
+repo clean. `--project`: install into the workspace's `.claude/skills/` and add
+those paths to `info/exclude`. `olf skill list` shows what is bundled.
 
 ## API (Rust + clap)
 
@@ -156,6 +209,8 @@ pub enum Command {
     Build(BuildArgs),
     /// Format .tex files with tex-fmt (requires fmt.enabled)
     Fmt(FmtArgs),
+    /// Open the checkout in $VISUAL / $EDITOR
+    Edit,
     /// Open the project on overleaf.com
     Open(OpenArgs),
     /// Manage bundled agent skills
@@ -194,10 +249,10 @@ pub struct SyncArgs {
 
 #[derive(Args)]
 pub struct BuildArgs {
-    /// Override engine from .overleafrc
+    /// Override engine from .olf/config.toml
     #[arg(long, value_enum)]
     pub engine: Option<Engine>,
-    /// Override main file from .overleafrc
+    /// Override main file from .olf/config.toml
     #[arg(long)]
     pub main: Option<PathBuf>,
     /// Also print warnings (overfull boxes, undefined refs, ...)
@@ -226,8 +281,11 @@ pub struct OpenArgs {
 
 #[derive(Subcommand)]
 pub enum SkillCommand {
-    /// Install skills into .claude/skills/
+    /// Install skills (default: ~/.claude/skills/)
     Install {
+        /// Install into the workspace's .claude/skills/ instead
+        #[arg(long)]
+        project: bool,
         /// Overwrite existing skill files
         #[arg(long)]
         force: bool,
@@ -252,7 +310,7 @@ pub enum Engine {
 pub enum Exit {
     Ok = 0,
     Error = 1,       // generic / usage
-    NotAProject = 2, // no .overleafrc found
+    NotAProject = 2, // no .olf/config.toml found
     Conflict = 3,    // sync hit merge conflicts
     Rejected = 4,    // push rejected after retry
     BuildFailed = 5,
@@ -274,7 +332,7 @@ pub enum Exit {
 src/
   main.rs        // parse, dispatch, map errors → Exit
   cli.rs         // clap structs above
-  config.rs      // .overleafrc (serde + toml), upward discovery
+  config.rs      // .olf/config.toml (serde + toml), workspace discovery
   git.rs         // thin wrapper over the `git` subprocess
   overleaf.rs    // URL/ID parsing, project URL
   latex/
@@ -313,4 +371,7 @@ or `thiserror`, `which`, `open`.
 - Distribution of skills: `olf skill install` only, or also a Claude Code
   plugin?
 - Confirm git integration availability on free Overleaf plans.
+- Verify the `.ignore` re-inclusion trick with Claude Code's Grep/Glob and
+  other agents' search tools; fallback if it doesn't work.
+- `--submodule` mode for outer repos that want to pin paper versions.
 - Retry/backoff policy for `olf sync`.
