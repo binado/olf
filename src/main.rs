@@ -5,6 +5,9 @@ mod config;
 mod error;
 // Not wired into commands yet; the allow goes away with `init`.
 #[allow(dead_code)]
+mod git;
+// Not wired into commands yet; the allow goes away with `init`.
+#[allow(dead_code)]
 mod overleaf;
 
 use clap::Parser;
