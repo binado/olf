@@ -112,6 +112,180 @@ Open `https://www.overleaf.com/project/<id>` in the browser.
 ### `olf skill install`
 
 Install the bundled skills into the project (`.claude/skills/`).
+`olf skill list` shows what is bundled.
+
+## API (Rust + clap)
+
+Implemented in Rust with clap's derive API. Agent-oriented conventions:
+
+- Global `-C <dir>` (like `git -C`) so agents never need to `cd`.
+- Global `--json` for machine-readable output on every command.
+- Distinct exit codes so agents can branch on outcomes without parsing text.
+- `sync` never commits: agents commit with plain `git` and their own messages;
+  `olf` complements git rather than hiding it.
+
+```rust
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
+
+/// Work on Overleaf projects from a local git checkout.
+#[derive(Parser)]
+#[command(name = "olf", version, about)]
+pub struct Cli {
+    /// Run as if olf was started in <dir> (like `git -C`)
+    #[arg(short = 'C', global = true, value_name = "DIR")]
+    pub dir: Option<PathBuf>,
+
+    /// Emit machine-readable JSON instead of human text
+    #[arg(long, global = true)]
+    pub json: bool,
+
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Subcommand)]
+pub enum Command {
+    /// Clone and/or set up an Overleaf project (idempotent)
+    Init(InitArgs),
+    /// Show local changes and whether Overleaf moved ahead
+    Status(StatusArgs),
+    /// Pull (rebase) and push committed work
+    Sync(SyncArgs),
+    /// Compile locally with latexmk or tectonic
+    Build(BuildArgs),
+    /// Format .tex files with tex-fmt (requires fmt.enabled)
+    Fmt(FmtArgs),
+    /// Open the project on overleaf.com
+    Open(OpenArgs),
+    /// Manage bundled agent skills
+    #[command(subcommand)]
+    Skill(SkillCommand),
+}
+
+#[derive(Args)]
+pub struct InitArgs {
+    /// Overleaf project ID
+    #[arg(long, conflicts_with = "url")]
+    pub id: Option<String>,
+    /// Any overleaf.com project URL
+    #[arg(long)]
+    pub url: Option<String>,
+    /// Git token (stored in the credential helper, never in config)
+    #[arg(long, env = "OVERLEAF_GIT_TOKEN", hide_env_values = true)]
+    pub token: Option<String>,
+    /// Target directory (default: cwd, or project ID when cloning)
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct StatusArgs {
+    /// Skip `git fetch` (offline / fast)
+    #[arg(long)]
+    pub no_fetch: bool,
+}
+
+#[derive(Args)]
+pub struct SyncArgs {
+    /// Show what would happen without pushing
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Args)]
+pub struct BuildArgs {
+    /// Override engine from .overleafrc
+    #[arg(long, value_enum)]
+    pub engine: Option<Engine>,
+    /// Override main file from .overleafrc
+    #[arg(long)]
+    pub main: Option<PathBuf>,
+    /// Also print warnings (overfull boxes, undefined refs, ...)
+    #[arg(long)]
+    pub warnings: bool,
+}
+
+#[derive(Args)]
+pub struct FmtArgs {
+    /// Format all .tex files, not only changed ones
+    #[arg(long, conflicts_with = "paths")]
+    pub all: bool,
+    /// Report unformatted files without writing; non-zero exit if any
+    #[arg(long)]
+    pub check: bool,
+    /// Explicit files to format
+    pub paths: Vec<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct OpenArgs {
+    /// Print the URL instead of opening a browser
+    #[arg(long)]
+    pub print: bool,
+}
+
+#[derive(Subcommand)]
+pub enum SkillCommand {
+    /// Install skills into .claude/skills/
+    Install {
+        /// Overwrite existing skill files
+        #[arg(long)]
+        force: bool,
+    },
+    /// List bundled skills
+    List,
+}
+
+#[derive(Clone, Copy, ValueEnum, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Engine {
+    Auto,
+    Latexmk,
+    Tectonic,
+}
+```
+
+### Exit codes
+
+```rust
+#[repr(u8)]
+pub enum Exit {
+    Ok = 0,
+    Error = 1,       // generic / usage
+    NotAProject = 2, // no .overleafrc found
+    Conflict = 3,    // sync hit merge conflicts
+    Rejected = 4,    // push rejected after retry
+    BuildFailed = 5,
+    Unformatted = 6, // fmt --check found diffs
+    MissingTool = 7, // latexmk / tectonic / tex-fmt not on PATH
+}
+```
+
+### Implementation notes
+
+- Shell out to the `git` binary rather than using `git2`: libgit2 does not
+  run git's credential helpers or hooks the same way, and both the Keychain
+  token storage and the pre-push guard depend on them.
+- Skills are embedded in the binary with `include_str!`.
+
+### Crate layout
+
+```
+src/
+  main.rs        // parse, dispatch, map errors → Exit
+  cli.rs         // clap structs above
+  config.rs      // .overleafrc (serde + toml), upward discovery
+  git.rs         // thin wrapper over the `git` subprocess
+  overleaf.rs    // URL/ID parsing, project URL
+  latex/
+    engine.rs    // detect + run latexmk / tectonic
+    log.rs       // condense .log → file:line: message
+  commands/      // one module per subcommand
+skills/          // SKILL.md files, embedded via include_str!
+```
+
+Dependencies: `clap` (derive, env), `serde`, `toml`, `serde_json`, `anyhow`
+or `thiserror`, `which`, `open`.
 
 ## Skills (the differentiator)
 
@@ -136,7 +310,6 @@ Install the bundled skills into the project (`.claude/skills/`).
 
 ## Open questions
 
-- Implementation language (Python + uv vs. a single Go/Rust binary).
 - Distribution of skills: `olf skill install` only, or also a Claude Code
   plugin?
 - Confirm git integration availability on free Overleaf plans.
