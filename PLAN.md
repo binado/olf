@@ -23,12 +23,11 @@ would not know on its own.
 
 ## Workspace layout
 
-`olf` manages a **workspace**: any directory holding olf's state plus the
-Overleaf checkout. The workspace may itself be the user's own git repo (e.g.
-the paper's analysis code), so olf must leave **no tracked footprint** there.
+`olf` manages a **workspace**: a standalone directory holding olf's state plus
+the Overleaf checkout.
 
 ```
-workspace/              # any dir; possibly the user's own git repo
+~/papers/dark-matter/   # workspace (never inside another git repo)
   .olf/
     config.toml         # olf config
     build/              # build output, never inside the checkout
@@ -37,18 +36,17 @@ workspace/              # any dir; possibly the user's own git repo
 
 - The checkout is **visible** (not under `.olf/`): ripgrep and agent search
   tools skip dot-directories by default, and the paper is what gets edited.
-- The checkout lives **inside** the workspace, not in a central `~/.olf/`:
-  agent sandboxes only allow free writes in the working directory, cloud
-  sessions don't persist `~`, search is rooted at the cwd, and a shared
-  checkout would let concurrent sessions trample each other.
+- The checkout lives **inside** the workspace, so an agent started there can
+  read, search and write it without extra permissions.
 - `olf` finds the workspace by walking up from the cwd looking for
   `.olf/config.toml`, so commands work from the root or inside `paper/`.
+  From anywhere else, use `-p <project>` (resolved through the index below).
 
 ### Configuration: `.olf/config.toml`
 
 ```toml
 project_id = "64f0c0ffee..."
-project_dir = "paper"      # relative to workspace; absolute path allowed (warns)
+project_dir = "paper"      # relative to workspace
 
 [build]
 main = "main.tex"          # auto-detected by `olf init` (file with \documentclass)
@@ -62,35 +60,58 @@ wrap = false
 
 The token is **never** stored in the config or the git remote URL.
 
-### When the workspace is a git repo
+### No workspaces inside git repos
 
-The Overleaf checkout must remain its own repo (the bridge needs its own
-linear `master`), and the user most likely doesn't want olf files committed to
-their repo. `olf init` detects an enclosing repo and:
+`olf init` **refuses** to create a workspace inside an existing git work tree
+(checked on the *target* directory with
+`git -C <dir> rev-parse --is-inside-work-tree`, not on the cwd). The Overleaf
+checkout must be its own repo, and nesting it in e.g. the paper's code repo
+would require ignore-file tricks in a repo olf doesn't own. The error message
+suggests a sibling location instead.
 
-- Appends `/.olf/` and `/paper/` to that repo's **`.git/info/exclude`**
-  (local-only, never committed; resolve the path with
-  `git rev-parse --git-path info/exclude` so worktrees work). This also stops
-  `git add .` from recording `paper/` as an embedded repository.
-- Writes a workspace-root **`.ignore`** containing `!/paper/` so ripgrep-based
-  tools still search the paper (`.ignore` takes precedence over git ignores and
-  git itself does not read it). The `.ignore` file is itself added to
-  `info/exclude`. If a tracked `.ignore` already exists, don't modify it — warn
-  instead. **Needs verification** against Claude Code's Grep/Glob tools.
-- Opt-in alternative for users who *do* want the outer repo to pin paper
-  versions (e.g. tag code + paper at submission): `olf init --submodule`.
-  Not v1.
+**Exception — adopting an existing Overleaf clone**: if the enclosing repo's
+`origin` is `git.overleaf.com`, the clone itself becomes the workspace with
+`project_dir = "."`. `.olf/` (and anything else olf writes there) is added to
+that clone's `.git/info/exclude` so it never reaches Overleaf.
 
-### Adopting an existing clone
+### Project index: `~/.olf/projects/`
 
-Running `olf init` inside an existing Overleaf clone makes the clone itself the
-workspace with `project_dir = "."`. In that case `.olf/` sits inside the
-Overleaf repo and is added to *its* `.git/info/exclude`, so it never reaches
-Overleaf.
+`olf init` registers each workspace as a symlink, pointing **inward** at the
+real workspace:
+
+```
+~/.olf/projects/
+  64f0c0ffee -> ~/papers/dark-matter
+  a1b2c3d4e5 -> ~/thesis
+```
+
+- Powers `olf list` and the global `-p <project>` flag (ID, unique ID prefix,
+  or workspace directory name).
+- Only humans and olf traverse these links; agents work on real paths.
+- Dangling links (deleted workspaces) are reported by `olf list` and pruned
+  with `olf list --prune`.
+- v1: one workspace per project ID per machine; re-running `init` for the same
+  ID elsewhere errors unless `--force` relinks.
+- Location overridable with `OLF_HOME`.
+
+### Working on code and paper together
+
+When an agent runs in the paper's *code* repo and must also edit the paper, the
+paper is outside its workspace and sandboxed writes are blocked. The user is
+opting in, so the goal is to grant **exactly the paper directory, once**,
+instead of repeated prompts or disabling the sandbox:
+
+- `olf grant <agent>`: persist access in the current repo's agent settings.
+- `olf init --grant <agent>`: same, right after init (target is the new
+  workspace, settings go to the cwd's repo).
+- `olf exec -- <agent> [args]`: grant for a single session.
+- `olf path`: raw path for anything else (`claude --add-dir "$(olf path)"`).
 
 ## Commands
 
-### `olf init [--id <id> | --url <overleaf-url>] [dir]`
+Global flags: `-C <dir>`, `-p/--project <project>`, `--json`.
+
+### `olf init [--id <id> | --url <overleaf-url>] [--grant <agent>] [dir]`
 
 One command to create or repair a workspace, cloning if needed:
 
@@ -101,6 +122,7 @@ One command to create or repair a workspace, cloning if needed:
 - **Idempotent**: re-running repairs/updates the setup and never overwrites
   user-edited config values. If the checkout belongs to a *different* project,
   error.
+- Refuses targets inside non-Overleaf git repos (see above).
 
 Setup steps:
 
@@ -111,7 +133,8 @@ Setup steps:
   rejects force pushes and non-`master` branches.
 - Add stray LaTeX artifacts (`*.aux`, `*.log`, …) to the checkout's
   `.git/info/exclude`, in case someone builds manually inside it.
-- Handle an enclosing git repo as described above.
+- Register the workspace in `~/.olf/projects/`.
+- With `--grant <agent>`: run `olf grant <agent>` for the cwd.
 
 ### `olf status`
 
@@ -152,20 +175,50 @@ Format `.tex` files with [tex-fmt](https://github.com/WGUNDERWOOD/tex-fmt).
   defer to it instead.
 - If `tex-fmt` is not on PATH, fail with install hints.
 
+### `olf list [--prune]`
+
+List registered workspaces (ID, path, status of the link).
+
+### `olf path`
+
+Print the checkout path of the current (or `-p`) project.
+
 ### `olf edit`
 
-Open the checkout in `$VISUAL` (falling back to `$EDITOR`).
+Open the checkout in `$VISUAL` (falling back to `$EDITOR`). Works from
+anywhere with `-p`.
 
-### `olf open`
+### `olf open [--print]`
 
 Open `https://www.overleaf.com/project/<id>` in the browser.
+
+### `olf grant <agent> [--repo <dir>]`
+
+Persistently allow an agent running in `--repo` (default: cwd) to write the
+paper checkout. v1 supports `claude`:
+
+- Merge the checkout path into `permissions.additionalDirectories` in
+  `<repo>/.claude/settings.local.json` (never clobber existing settings).
+- If that file isn't already git-ignored (`git check-ignore`), add it to the
+  repo's `.git/info/exclude` — it's a machine-local path and must not be
+  committed.
+- Other agents (Codex writable roots, Gemini include dirs, …) added later.
+
+### `olf exec -- <agent> [args...]`
+
+Launch an agent with access to the paper for one session:
+
+- Known agents get their flag injected (`claude` → `--add-dir <checkout>`).
+- Every agent gets `OLF_WORKSPACE` and `OLF_PROJECT_DIR` in its environment;
+  unknown agents get only these, with a warning.
 
 ### `olf skill install [--project]`
 
 Install the bundled skills. Default: user-level (`~/.claude/skills/`) — skills
-are read-only, so living outside the workspace is fine and keeps the user's
-repo clean. `--project`: install into the workspace's `.claude/skills/` and add
-those paths to `info/exclude`. `olf skill list` shows what is bundled.
+are read-only, so living outside the workspace is fine. `--project`: install
+into the workspace's `.claude/skills/` (added to `info/exclude` when the
+workspace is an adopted Overleaf clone). `olf skill list` shows what is
+bundled.
 
 ## API (Rust + clap)
 
@@ -174,6 +227,7 @@ Implemented in Rust with clap's derive API. Agent-oriented conventions:
 - Global `-C <dir>` (like `git -C`) so agents never need to `cd`.
 - Global `--json` for machine-readable output on every command.
 - Distinct exit codes so agents can branch on outcomes without parsing text.
+- Global `-p/--project` to act on any registered project from anywhere.
 - `sync` never commits: agents commit with plain `git` and their own messages;
   `olf` complements git rather than hiding it.
 
@@ -188,6 +242,10 @@ pub struct Cli {
     /// Run as if olf was started in <dir> (like `git -C`)
     #[arg(short = 'C', global = true, value_name = "DIR")]
     pub dir: Option<PathBuf>,
+
+    /// Act on a registered project (ID, ID prefix, or workspace name)
+    #[arg(short, long, global = true)]
+    pub project: Option<String>,
 
     /// Emit machine-readable JSON instead of human text
     #[arg(long, global = true)]
@@ -209,10 +267,18 @@ pub enum Command {
     Build(BuildArgs),
     /// Format .tex files with tex-fmt (requires fmt.enabled)
     Fmt(FmtArgs),
+    /// List registered workspaces
+    List(ListArgs),
+    /// Print the checkout path
+    Path,
     /// Open the checkout in $VISUAL / $EDITOR
     Edit,
     /// Open the project on overleaf.com
     Open(OpenArgs),
+    /// Persistently allow an agent in a repo to write the checkout
+    Grant(GrantArgs),
+    /// Launch an agent with access to the checkout for one session
+    Exec(ExecArgs),
     /// Manage bundled agent skills
     #[command(subcommand)]
     Skill(SkillCommand),
@@ -229,7 +295,13 @@ pub struct InitArgs {
     /// Git token (stored in the credential helper, never in config)
     #[arg(long, env = "OVERLEAF_GIT_TOKEN", hide_env_values = true)]
     pub token: Option<String>,
-    /// Target directory (default: cwd, or project ID when cloning)
+    /// Also grant these agents access from the cwd's repo
+    #[arg(long, value_enum)]
+    pub grant: Vec<Agent>,
+    /// Relink the index if this project is registered elsewhere
+    #[arg(long)]
+    pub force: bool,
+    /// Workspace directory (default: cwd)
     pub path: Option<PathBuf>,
 }
 
@@ -273,10 +345,33 @@ pub struct FmtArgs {
 }
 
 #[derive(Args)]
+pub struct ListArgs {
+    /// Remove links whose workspace no longer exists
+    #[arg(long)]
+    pub prune: bool,
+}
+
+#[derive(Args)]
 pub struct OpenArgs {
     /// Print the URL instead of opening a browser
     #[arg(long)]
     pub print: bool,
+}
+
+#[derive(Args)]
+pub struct GrantArgs {
+    #[arg(value_enum)]
+    pub agent: Agent,
+    /// Repo whose agent settings to update (default: cwd)
+    #[arg(long)]
+    pub repo: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct ExecArgs {
+    /// Agent command and its arguments, after `--`
+    #[arg(last = true, required = true)]
+    pub command: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -292,6 +387,11 @@ pub enum SkillCommand {
     },
     /// List bundled skills
     List,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum Agent {
+    Claude,
 }
 
 #[derive(Clone, Copy, ValueEnum, serde::Deserialize)]
@@ -316,6 +416,8 @@ pub enum Exit {
     BuildFailed = 5,
     Unformatted = 6, // fmt --check found diffs
     MissingTool = 7, // latexmk / tectonic / tex-fmt not on PATH
+    InsideGitRepo = 8, // init target is inside a non-Overleaf repo
+    UnknownProject = 9, // -p didn't match (or matched several) projects
 }
 ```
 
@@ -334,7 +436,9 @@ src/
   cli.rs         // clap structs above
   config.rs      // .olf/config.toml (serde + toml), workspace discovery
   git.rs         // thin wrapper over the `git` subprocess
+  index.rs       // ~/.olf/projects symlink index, -p resolution
   overleaf.rs    // URL/ID parsing, project URL
+  agents/        // per-agent grant/exec adapters (claude.rs first)
   latex/
     engine.rs    // detect + run latexmk / tectonic
     log.rs       // condense .log → file:line: message
@@ -355,23 +459,45 @@ or `thiserror`, `which`, `open`.
    `olf fmt` if the project enabled it.
 3. **Build-fix loop** — edit → `olf build` → read condensed errors → fix; give
    up and report after N failed attempts instead of thrashing.
-4. *(Later)* **Writing tasks** — prose tightening, reference/citation checks,
+4. **Access etiquette** — if the paper is outside the workspace and writes are
+   blocked, ask the user to run `olf grant` (or grant that one directory)
+   rather than retrying or working around the sandbox.
+5. *(Later)* **Writing tasks** — prose tightening, reference/citation checks,
    venue-specific formatting.
 
 ## Non-goals (v1)
 
-- Listing projects, triggering Overleaf compiles, reading Overleaf comments, or
+- Listing projects from the Overleaf account, triggering Overleaf compiles, reading Overleaf comments, or
   anything else requiring cookie-based scraping.
 - MCP server — the CLI is already agent-usable via the shell; revisit if a
   need appears.
 - Shipping a TeX distribution.
+
+## Rejected alternatives
+
+- **Workspace inside the user's code repo** (outer `.git/info/exclude` plus a
+  `.ignore` with `!/paper/` to keep it searchable): works, but needs tricks in
+  a repo olf doesn't own and unverified search-tool behaviour. Replaced by
+  standalone workspaces + `grant`/`exec`.
+- **Git submodule / subtree in the code repo**: submodules add pointer-bump
+  noise and auth on recursive clone; subtree splitting fights the bridge's
+  linear history. Possible later as an opt-in for pinning paper versions.
+- **Central checkout store (`~/.olf/<id>`)**: sandboxed agents can't write
+  there without flags, cloud sessions don't persist `~`, search is rooted at
+  the cwd, and concurrent sessions would share one checkout.
+- **Outward symlink (`workspace/paper -> ~/.olf/<id>`)**: sandboxes resolve
+  real paths (by design, to prevent escapes), ripgrep doesn't follow symlinks
+  while walking, and the link itself still needs ignoring.
 
 ## Open questions
 
 - Distribution of skills: `olf skill install` only, or also a Claude Code
   plugin?
 - Confirm git integration availability on free Overleaf plans.
-- Verify the `.ignore` re-inclusion trick with Claude Code's Grep/Glob and
-  other agents' search tools; fallback if it doesn't work.
-- `--submodule` mode for outer repos that want to pin paper versions.
+- Verify whether Claude Code's `additionalDirectories` / `--add-dir` also
+  covers sandboxed Bash writes (needed for `git commit` in the checkout), or
+  whether sandbox write paths must be granted separately.
+- Exact settings keys for other agents (Codex, Gemini CLI) before adding them
+  to `grant`/`exec`.
+- Multiple workspaces for the same project (e.g. parallel agent sessions).
 - Retry/backoff policy for `olf sync`.
