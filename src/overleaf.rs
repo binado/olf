@@ -54,10 +54,6 @@ impl ProjectId {
             _ => Err(invalid("not an overleaf.com URL")),
         }
     }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 impl fmt::Display for ProjectId {
@@ -112,7 +108,7 @@ mod tests {
 
     #[test]
     fn parses_bare_ids() {
-        assert_eq!(ProjectId::parse(ID).unwrap().as_str(), ID);
+        assert_eq!(ProjectId::parse(ID).unwrap().to_string(), ID);
         assert!(ProjectId::parse("64F0C0FFEE0123456789ABCD").is_err());
         assert!(ProjectId::parse("64f0c0ffee").is_err());
         assert!(ProjectId::parse("zzzzzzzzzzzzzzzzzzzzzzzz").is_err());
@@ -169,7 +165,7 @@ mod tests {
     #[test]
     fn recognises_bridge_remotes() {
         let url = format!("https://git.overleaf.com/{ID}");
-        assert_eq!(id_from_remote(&url).unwrap().as_str(), ID);
+        assert_eq!(id_from_remote(&url).unwrap().to_string(), ID);
         assert!(id_from_remote("git@github.com:x/y.git").is_none());
         assert!(id_from_remote(&format!("https://www.overleaf.com/project/{ID}")).is_none());
     }

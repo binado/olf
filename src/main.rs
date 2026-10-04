@@ -4,8 +4,6 @@ mod config;
 mod error;
 mod git;
 mod latex;
-// Web URLs are used by `open`; the allow goes away with it.
-#[allow(dead_code)]
 mod overleaf;
 
 use clap::Parser;
@@ -21,7 +19,8 @@ fn run(cli: &Cli) -> Result<()> {
     match &cli.command {
         Command::Init(args) => commands::init::run(args),
         Command::Build(args) => commands::build::run(args, cli.json),
-        Command::Open(_) | Command::Skill(_) => {
+        Command::Open(args) => commands::open::run(args),
+        Command::Skill(_) => {
             error::bail!("not implemented yet")
         }
     }
