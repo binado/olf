@@ -1,6 +1,7 @@
 //! `olf init`: create or repair a workspace, cloning if needed.
 
 use crate::cli::InitArgs;
+use crate::commands::grant;
 use crate::config::{self, Config, Workspace};
 use crate::error::{OlfError, Result, bail};
 use crate::git::{self, CredentialStatus, HookStatus};
@@ -40,9 +41,9 @@ pub fn exclude_lines(adopted: bool) -> Vec<&'static str> {
     extras.iter().chain(LATEX_ARTIFACTS).copied().collect()
 }
 
-pub fn run(args: &InitArgs) -> Result<()> {
-    let cwd = std::env::current_dir()?;
-    let mut target = std::path::absolute(cwd.join(args.path.as_deref().unwrap_or(Path::new("."))))?;
+pub fn run(args: &InitArgs, invocation_dir: &Path) -> Result<()> {
+    let mut target =
+        std::path::absolute(invocation_dir.join(args.path.as_deref().unwrap_or(Path::new("."))))?;
     // Re-running from inside a workspace (e.g. its checkout) repairs that workspace.
     if let Some(root) = Workspace::find_root(&target) {
         target = root;
@@ -143,6 +144,13 @@ pub fn run(args: &InitArgs) -> Result<()> {
         target.display(),
         main.display()
     );
+
+    if !args.grant.is_empty() {
+        let ws = Workspace::discover(&target)?;
+        for &agent in &args.grant {
+            grant::grant_to(agent, invocation_dir, &ws)?;
+        }
+    }
     Ok(())
 }
 

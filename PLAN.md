@@ -512,9 +512,12 @@ or `thiserror`, `which`, `open`.
 - Distribution of skills: `olf skill install` only, or also a Claude Code
   plugin?
 - Confirm git integration availability on free Overleaf plans.
-- Verify whether Claude Code's `additionalDirectories` / `--add-dir` also
-  covers sandboxed Bash writes (needed for `git commit` in the checkout), or
-  whether sandbox write paths must be granted separately.
+- ~~Does `additionalDirectories` / `--add-dir` cover sandboxed Bash writes?~~
+  Resolved: the Claude Code sandbox docs say sandboxed Bash commands may write
+  to "the working directory, the per-user temp dir, and any directories added
+  with `--add-dir`, `/add-dir`, or `permissions.additionalDirectories`", so
+  no `sandbox.filesystem.allowWrite` is needed. (Still worth a real-world
+  `git commit` check.)
 - Exact settings keys for other agents (Codex, Gemini CLI) before adding them
   to `grant`/`exec`.
 - Multiple workspaces for the same project (e.g. parallel agent sessions).

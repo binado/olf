@@ -26,6 +26,10 @@ pub const SKILLS: &[Skill] = &[
         name: "olf-build",
         content: include_str!("../../skills/olf-build/SKILL.md"),
     },
+    Skill {
+        name: "olf-access",
+        content: include_str!("../../skills/olf-access/SKILL.md"),
+    },
 ];
 
 impl Skill {

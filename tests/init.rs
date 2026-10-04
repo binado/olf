@@ -233,3 +233,23 @@ fn missing_project_is_an_error() {
         .code(1)
         .stderr(predicate::str::contains("--url"));
 }
+
+#[test]
+fn grant_flag_writes_the_invoking_repos_settings() {
+    let env = Env::new();
+    env.remote(ID, &[("main.tex", MAIN_TEX)]);
+    let code = env.code_repo();
+
+    env.olf()
+        .current_dir(&code)
+        .args(["init", "--id", ID, "../ws", "--grant", "claude"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("granted claude"));
+
+    let settings = fs::read_to_string(code.join(".claude/settings.local.json")).unwrap();
+    assert!(
+        settings.contains(&env.path().join("ws/paper").display().to_string()),
+        "{settings}"
+    );
+}
