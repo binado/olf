@@ -1,4 +1,7 @@
 mod cli;
+// Not wired into commands yet; the allow goes away with `init`.
+#[allow(dead_code)]
+mod config;
 mod error;
 // Not wired into commands yet; the allow goes away with `init`.
 #[allow(dead_code)]
