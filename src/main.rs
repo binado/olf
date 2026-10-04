@@ -1,10 +1,9 @@
 mod cli;
 mod commands;
-// Workspace discovery is used by `build`; the allow goes away with it.
-#[allow(dead_code)]
 mod config;
 mod error;
 mod git;
+mod latex;
 // Web URLs are used by `open`; the allow goes away with it.
 #[allow(dead_code)]
 mod overleaf;
@@ -21,7 +20,8 @@ fn run(cli: &Cli) -> Result<()> {
     }
     match &cli.command {
         Command::Init(args) => commands::init::run(args),
-        Command::Build(_) | Command::Open(_) | Command::Skill(_) => {
+        Command::Build(args) => commands::build::run(args, cli.json),
+        Command::Open(_) | Command::Skill(_) => {
             error::bail!("not implemented yet")
         }
     }

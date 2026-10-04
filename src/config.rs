@@ -49,6 +49,16 @@ pub enum Compiler {
     Lualatex,
 }
 
+impl Compiler {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Pdflatex => "pdflatex",
+            Self::Xelatex => "xelatex",
+            Self::Lualatex => "lualatex",
+        }
+    }
+}
+
 fn default_project_dir() -> PathBuf {
     PathBuf::from("paper")
 }
@@ -163,11 +173,6 @@ impl Workspace {
     pub fn build_dir(&self) -> PathBuf {
         self.root.join(OLF_DIR).join("build")
     }
-
-    /// Whether the workspace is an adopted Overleaf clone (`project_dir = "."`).
-    pub fn is_adopted(&self) -> bool {
-        self.config.project_dir == Path::new(".")
-    }
 }
 
 #[cfg(test)]
@@ -201,7 +206,6 @@ mod tests {
         assert_eq!(ws.config.project_id, ID);
         assert_eq!(ws.checkout_dir(), root.join("paper"));
         assert_eq!(ws.build_dir(), root.join(".olf/build"));
-        assert!(!ws.is_adopted());
     }
 
     #[test]
