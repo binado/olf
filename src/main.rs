@@ -1,12 +1,11 @@
 mod cli;
-// Not wired into commands yet; the allow goes away with `init`.
+mod commands;
+// Workspace discovery is used by `build`; the allow goes away with it.
 #[allow(dead_code)]
 mod config;
 mod error;
-// Not wired into commands yet; the allow goes away with `init`.
-#[allow(dead_code)]
 mod git;
-// Not wired into commands yet; the allow goes away with `init`.
+// Web URLs are used by `open`; the allow goes away with it.
 #[allow(dead_code)]
 mod overleaf;
 
@@ -21,7 +20,8 @@ fn run(cli: &Cli) -> Result<()> {
             .map_err(|e| OlfError::Error(format!("cannot change to {}: {e}", dir.display())))?;
     }
     match &cli.command {
-        Command::Init(_) | Command::Build(_) | Command::Open(_) | Command::Skill(_) => {
+        Command::Init(args) => commands::init::run(args),
+        Command::Build(_) | Command::Open(_) | Command::Skill(_) => {
             error::bail!("not implemented yet")
         }
     }
