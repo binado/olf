@@ -142,7 +142,8 @@ Setup steps:
   `main.tex`; otherwise prompt, or fail when non-interactive and ask for
   `--main`.
 - Configure the checkout for the bridge, so plain git stays safe:
-  `pull.rebase=true` (linear history); pre-push hook that rejects force pushes
+  `pull.rebase=true` plus `pull.ff=true` (linear history; the latter keeps a
+  global `pull.ff=only` from refusing the rebase); pre-push hook that rejects force pushes
   and pushes to any branch other than the remote's `HEAD`. The hook is a
   safety net only (`--no-verify` bypasses it); the sync-discipline skill is
   the primary guardrail.

@@ -16,7 +16,8 @@ Overleaf's git bridge is not GitHub:
 - Co-authors edit the same files in the browser, often at the same moment.
 - Every file you push appears in the Overleaf project tree for everyone.
 
-`olf init` already set `pull.rebase=true` and a pre-push hook that rejects
+`olf init` already set `pull.rebase=true` (plus `pull.ff=true`, so a global
+`pull.ff=only` can't block the rebase) and a pre-push hook that rejects
 force pushes, deletions and pushes to any other branch. The hook is a safety net,
 not permission to try those things.
 
@@ -31,7 +32,9 @@ not permission to try those things.
    likely they conflict with browser edits.
 4. **Push rejected** (`rejected`, `fetch first`, `non-fast-forward`): someone
    pushed or edited in the browser. Run `git pull`, then push again. Never
-   reach for `--force` or `--no-verify`.
+   reach for `--force` or `--no-verify`. If `git pull` says `Not possible to
+   fast-forward`, the checkout's config is incomplete: run `olf init` (it
+   repairs the setup) and pull again; don't merge instead.
 5. **Rebase conflict during pull: stop.** Don't resolve co-authors' text on
    your own. Do this:
    - list the files: `git -C paper diff --name-only --diff-filter=U`

@@ -114,6 +114,9 @@ pub fn run(args: &InitArgs) -> Result<()> {
     }
 
     git::set_config(&checkout, "pull.rebase", "true")?;
+    // A global `pull.ff=only` would otherwise make `git pull` refuse to rebase
+    // as soon as a co-author edits in the browser.
+    git::set_config(&checkout, "pull.ff", "true")?;
     match git::install_pre_push_hook(&checkout)? {
         HookStatus::Installed => println!("installed pre-push hook"),
         HookStatus::Unchanged => {}

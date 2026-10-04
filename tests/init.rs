@@ -42,6 +42,55 @@ fn fresh_clone_sets_up_workspace() {
 }
 
 #[test]
+fn pull_rebases_despite_global_ff_only() {
+    let env = Env::new();
+    let ws = env.workspace();
+    let paper = ws.join("paper");
+
+    // A co-author edits another file "in the browser".
+    let browser = env.path().join("browser");
+    git(
+        &env.path(),
+        &[
+            "clone",
+            "--quiet",
+            env.remotes().join(ID).to_str().unwrap(),
+            "browser",
+        ],
+    );
+    fs::write(browser.join("other.tex"), "browser edit\n").unwrap();
+    git(&browser, &["add", "."]);
+    git(&browser, &["commit", "--quiet", "-m", "browser"]);
+    git(&browser, &["push", "--quiet"]);
+
+    fs::write(paper.join("local.tex"), "local edit\n").unwrap();
+    git(&paper, &["add", "."]);
+    git(&paper, &["commit", "--quiet", "-m", "local"]);
+
+    let global = env.path().join("gitconfig");
+    fs::write(&global, "[pull]\n\tff = only\n").unwrap();
+    let output = std::process::Command::new("git")
+        .current_dir(&paper)
+        .args(["pull", "--quiet"])
+        .env("GIT_CONFIG_GLOBAL", &global)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // Linear history: local commit rebased on top of the browser edit.
+    assert_eq!(
+        git(&paper, &["log", "--format=%s", "-3"]),
+        "local\nbrowser\ninit"
+    );
+}
+
+#[test]
 fn rerun_is_idempotent_and_keeps_user_config() {
     let env = Env::new();
     let ws = env.workspace();
