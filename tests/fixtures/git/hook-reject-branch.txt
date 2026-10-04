@@ -1,3 +1,0 @@
-olf: refusing to push to refs/heads/other: this Overleaf project only has refs/heads/main
-olf: pull, then push that branch with plain `git push`
-error: failed to push some refs to 'https://git.overleaf.com/67bc8c6363a7966570dc8dd5'

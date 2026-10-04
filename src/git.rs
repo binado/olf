@@ -434,7 +434,11 @@ pub mod tests {
 
     #[test]
     fn classifies_real_bridge_auth_failure() {
-        let stderr = include_str!("../tests/fixtures/git/clone-bad-token.txt");
+        // Captured from git.overleaf.com with an invalid token.
+        let stderr = "remote: Enter your Git authentication token when prompted for a password.\n\
+                      remote: You can generate and manage your Git authentication tokens in\n\
+                      remote: your Overleaf Account Settings.\n\
+                      fatal: Authentication failed for 'https://git.overleaf.com/67bc8c6363a7966570dc8dd5/'";
         assert!(is_auth_failure(stderr));
     }
 

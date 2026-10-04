@@ -476,7 +476,7 @@ or `thiserror`, `which`, `open`.
 - Clone and push with a token on a free account; check how the credential
   helper stores the token for `git.overleaf.com`.
 - Edit in the browser, then push locally: capture the exact rejection and
-  conflict output and save it as fixtures for the skills and tests.
+  conflict output to check the skills and tests against.
 - Revoke the token and capture the auth-failure output (for `AuthFailed`).
 - Run latexmk with a separate output directory on real projects; check
   packages known to struggle with it (`minted`, biber setups).
