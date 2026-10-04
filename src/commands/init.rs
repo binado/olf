@@ -119,7 +119,7 @@ pub fn run(args: &InitArgs) -> Result<()> {
         HookStatus::Unchanged => {}
         HookStatus::Foreign(path) => eprintln!(
             "warning: {} exists and wasn't written by olf; left it alone, \
-             so force pushes and non-master pushes aren't guarded",
+             so force pushes and pushes to other branches aren't guarded",
             path.display()
         ),
     }
@@ -245,35 +245,29 @@ static DOCUMENTCLASS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^[ \t]*\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}").expect("valid regex")
 });
 
-/// Find the main file: `main.tex`, else the single root `.tex` file with a
-/// `\documentclass` that isn't `standalone`/`subfiles`.
+/// Find the main file: a root `main.tex`, else the single `.tex` file (in
+/// any folder, as Overleaf allows) with a `\documentclass` that isn't
+/// `standalone`/`subfiles`, else the single such file named `main.tex`.
 pub fn detect_main(checkout: &Path) -> Result<PathBuf> {
     if checkout.join("main.tex").is_file() {
         return Ok("main.tex".into());
     }
     let mut candidates = Vec::new();
-    for entry in fs::read_dir(checkout)? {
-        let path = entry?.path();
-        if path.extension().is_none_or(|e| e != "tex") || !path.is_file() {
-            continue;
-        }
-        let text = fs::read_to_string(&path).unwrap_or_default();
-        let is_root = DOCUMENTCLASS
-            .captures_iter(&text)
-            .any(|c| !matches!(c[1].trim(), "standalone" | "subfiles"));
-        if is_root {
-            candidates.push(PathBuf::from(path.file_name().expect("file has a name")));
-        }
-    }
-    candidates.sort();
-    match candidates.as_slice() {
-        [main] => Ok(main.clone()),
-        [] => bail!(
-            "no main .tex file found in {} (no root file with \\documentclass)\n\
+    collect_root_files(checkout, Path::new(""), &mut candidates)?;
+    candidates.sort_by_key(|p| (p.components().count(), p.clone()));
+    let named_main: Vec<PathBuf> = candidates
+        .iter()
+        .filter(|p| p.file_name().is_some_and(|n| n == "main.tex"))
+        .cloned()
+        .collect();
+    match (candidates.as_slice(), named_main.as_slice()) {
+        ([main], _) | (_, [main]) => Ok(main.clone()),
+        ([], _) => bail!(
+            "no main .tex file found in {} (no file with \\documentclass)\n\
              hint: pass --main <file>",
             checkout.display()
         ),
-        many => bail!(
+        (many, _) => bail!(
             "several possible main files: {}\nhint: pass --main <file> (Overleaf: Menu → Main document)",
             many.iter()
                 .map(|p| p.display().to_string())
@@ -283,6 +277,31 @@ pub fn detect_main(checkout: &Path) -> Result<PathBuf> {
     }
 }
 
+/// Recursively collect `.tex` files (relative to `base`) that start a document.
+fn collect_root_files(base: &Path, rel: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(base.join(rel))? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with('.') {
+            continue; // .git, .olf, .claude, ...
+        }
+        let rel = rel.join(&name);
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_root_files(base, &rel, out)?;
+        } else if file_type.is_file() && rel.extension().is_some_and(|e| e == "tex") {
+            let text = fs::read_to_string(base.join(&rel)).unwrap_or_default();
+            let is_root = DOCUMENTCLASS
+                .captures_iter(&text)
+                .any(|c| !matches!(c[1].trim(), "standalone" | "subfiles"));
+            if is_root {
+                out.push(rel);
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,9 +309,36 @@ mod tests {
     fn checkout(files: &[(&str, &str)]) -> tempfile::TempDir {
         let tmp = tempfile::tempdir().unwrap();
         for (name, content) in files {
-            fs::write(tmp.path().join(name), content).unwrap();
+            let path = tmp.path().join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, content).unwrap();
         }
         tmp
+    }
+
+    #[test]
+    fn finds_main_in_subfolder() {
+        let dir = checkout(&[
+            ("notes/main.tex", "\\documentclass{book}"),
+            ("notes/chapters/gr/index.tex", "\\section{GR}"),
+            (".git/x.tex", "\\documentclass{article}"),
+        ]);
+        assert_eq!(
+            detect_main(dir.path()).unwrap(),
+            Path::new("notes/main.tex")
+        );
+    }
+
+    #[test]
+    fn prefers_single_main_tex_among_several_roots() {
+        let dir = checkout(&[
+            ("paper/main.tex", "\\documentclass{article}"),
+            ("response/letter.tex", "\\documentclass{letter}"),
+        ]);
+        assert_eq!(
+            detect_main(dir.path()).unwrap(),
+            Path::new("paper/main.tex")
+        );
     }
 
     #[test]
