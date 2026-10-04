@@ -9,7 +9,7 @@ use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-const BLOCK_START: &str = "# >>> olf (managed by `olf init`; edits inside are overwritten)";
+const BLOCK_START: &str = "# >>> olf (managed by olf; edits inside are overwritten)";
 const BLOCK_END: &str = "# <<< olf";
 pub const HOOK_MARKER: &str = "# olf-managed";
 
@@ -89,6 +89,18 @@ pub fn is_inside_work_tree(dir: &Path) -> bool {
 
 pub fn toplevel(dir: &Path) -> Result<PathBuf> {
     run(dir, &["rev-parse", "--show-toplevel"]).map(PathBuf::from)
+}
+
+/// Whether git ignores `path` in the work tree containing `dir`.
+pub fn is_ignored(dir: &Path, path: &Path) -> Result<bool> {
+    let path = path.to_string_lossy();
+    let args = ["check-ignore", "-q", "--", path.as_ref()];
+    let output = output(dir, &args)?;
+    match output.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => check(&args, &output).map(|()| false),
+    }
 }
 
 pub fn origin_url(dir: &Path) -> Option<String> {

@@ -4,7 +4,7 @@ use common::{Env, git};
 use predicates::prelude::*;
 use std::fs;
 
-const NAMES: [&str; 3] = ["olf-sync", "olf-editing", "olf-build"];
+const NAMES: [&str; 4] = ["olf-sync", "olf-editing", "olf-build", "olf-access"];
 
 #[test]
 fn lists_bundled_skills() {
@@ -22,7 +22,7 @@ fn installs_into_home_and_respects_force() {
         .args(["skill", "install"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("installed").count(3));
+        .stdout(predicate::str::contains("installed").count(4));
     let skills = env.home().join(".claude/skills");
     for name in NAMES {
         assert!(skills.join(name).join("SKILL.md").is_file(), "{name}");
@@ -32,7 +32,7 @@ fn installs_into_home_and_respects_force() {
         .args(["skill", "install"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("up to date").count(3));
+        .stdout(predicate::str::contains("up to date").count(4));
 
     let sync = skills.join("olf-sync/SKILL.md");
     fs::write(&sync, "my edits").unwrap();

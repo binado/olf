@@ -9,6 +9,9 @@ The paper is shared: co-authors read every diff in Overleaf's history, and
 edit the same files in the browser. Large or noisy diffs cause conflicts and
 make their review painful.
 
+If the paper is outside your working directory and writes are blocked, see
+the olf-access skill.
+
 ## Change only what you were asked to change
 
 - **Don't reformat, re-wrap or re-indent** text you didn't otherwise touch.

@@ -11,7 +11,9 @@ project safe and convenient for coding agents (and pleasant for humans):
   find your papers from anywhere.
 - `olf skill install` installs agent skills that teach the workflow:
   sync discipline with co-authors editing in the browser, editing manners,
-  and a build-fix loop.
+  a build-fix loop, and what to do when the paper is outside the sandbox.
+- `olf grant` / `olf exec` let an agent running in your *code* repo write
+  the paper checkout, which lives in a separate workspace.
 
 Day-to-day `git pull` / `commit` / `push` stay plain git. See
 [PLAN.md](PLAN.md) for the full design.
@@ -60,6 +62,8 @@ workspace.
 | `olf list [--prune]` | registered projects: ID, path, link status (`--json`); `--prune` removes links to deleted workspaces |
 | `olf path` | print the checkout directory |
 | `olf edit` | open the checkout in `$VISUAL`, else `$EDITOR` |
+| `olf grant <agent> [--repo <dir>]` | persistently allow an agent in a repo to write the checkout (`claude`) |
+| `olf exec -- <agent> [args...]` | launch an agent with checkout access for one session |
 | `olf open [--print]` | the project on overleaf.com |
 | `olf skill install` | install the bundled agent skills |
 
@@ -74,6 +78,24 @@ name, and runs the command in that workspace:
 olf -p dark build
 olf -p 64f0c0 path
 ```
+
+### Working on code and paper together
+
+When the paper lives in its own workspace, an agent started in your code
+repo can't write it (the sandbox only allows its working directory). Either:
+
+```sh
+cd ~/code/my-analysis
+olf -p dark grant claude        # persistent: edits .claude/settings.local.json
+olf -p dark exec -- claude      # one session: passes --add-dir <checkout>
+olf init --url <url> ../paper-ws --grant claude   # set up and grant at once
+```
+
+`grant` adds the checkout to `permissions.additionalDirectories` in the
+repo's `.claude/settings.local.json` and keeps that file out of git via
+`.git/info/exclude`. `exec` also sets `OLF_WORKSPACE` and `OLF_PROJECT_DIR`,
+and runs the agent in your current directory. Run `grant` yourself: under the
+sandbox an agent cannot edit its own `.claude` settings, which is intended.
 
 One workspace per project ID per machine: initialising the same project
 elsewhere fails unless you pass `olf init --force`, which relinks the index.

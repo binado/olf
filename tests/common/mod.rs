@@ -76,6 +76,8 @@ impl Env {
         cmd.current_dir(self.path())
             .env("HOME", self.home())
             .env("OLF_HOME", self.olf_home())
+            // Keep the developer's global git ignore out of `check-ignore`.
+            .env("XDG_CONFIG_HOME", self.home().join(".config"))
             .env("PATH", path)
             .env_remove("VISUAL")
             .env_remove("EDITOR")
@@ -117,6 +119,14 @@ impl Env {
             .assert()
             .success();
         self.path().join("ws")
+    }
+
+    /// A plain git repo standing in for the paper's code repo.
+    pub fn code_repo(&self) -> PathBuf {
+        let code = self.path().join("code");
+        fs::create_dir_all(&code).unwrap();
+        git(&code, &["init", "--quiet", "-b", "main"]);
+        code
     }
 }
 

@@ -44,6 +44,13 @@ pub enum Command {
     Edit,
     /// Open the project on overleaf.com
     Open(OpenArgs),
+    /// Persistently allow an agent in a repo to write the checkout
+    ///
+    /// Run by the human, not the agent: under the sandbox an agent cannot
+    /// edit its own `.claude` settings, which is intended.
+    Grant(GrantArgs),
+    /// Launch an agent with access to the checkout for one session
+    Exec(ExecArgs),
     /// Manage bundled agent skills
     #[command(subcommand)]
     Skill(SkillCommand),
@@ -66,8 +73,33 @@ pub struct InitArgs {
     /// Relink the index if this project is registered elsewhere
     #[arg(long)]
     pub force: bool,
+    /// Also let an agent in the current repo write the checkout (repeatable)
+    #[arg(long, value_enum, value_name = "AGENT")]
+    pub grant: Vec<Agent>,
     /// Workspace directory (default: cwd)
     pub path: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct GrantArgs {
+    /// Agent to grant access to
+    #[arg(value_enum)]
+    pub agent: Agent,
+    /// Repo the agent runs in (default: the git repo containing the cwd)
+    #[arg(long)]
+    pub repo: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct ExecArgs {
+    /// Agent command line, after `--` (e.g. `olf exec -- claude --resume`)
+    #[arg(last = true, required = true)]
+    pub command: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Agent {
+    Claude,
 }
 
 #[derive(Args)]
