@@ -48,10 +48,37 @@ impl Env {
         self.path().join("remotes")
     }
 
+    pub fn olf_home(&self) -> PathBuf {
+        self.path().join("olfhome")
+    }
+
+    /// Directory prepended to PATH, for fake tools.
+    pub fn bin(&self) -> PathBuf {
+        let bin = self.path().join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        bin
+    }
+
+    /// Install an executable `sh` script called `name` into `bin()`.
+    pub fn fake_tool(&self, name: &str, script: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = self.bin().join(name);
+        fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
     pub fn olf(&self) -> Command {
         let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("olf"));
+        let mut path = std::ffi::OsString::from(self.path().join("bin"));
+        path.push(":");
+        path.push(std::env::var_os("PATH").unwrap_or_default());
         cmd.current_dir(self.path())
             .env("HOME", self.home())
+            .env("OLF_HOME", self.olf_home())
+            .env("PATH", path)
+            .env_remove("VISUAL")
+            .env_remove("EDITOR")
             .env("OLF_GIT_BASE", self.remotes())
             .env_remove("OVERLEAF_GIT_TOKEN")
             .env_remove("CLAUDE_CONFIG_DIR")

@@ -10,6 +10,7 @@ pub enum Exit {
     BuildFailed = 4,
     MissingTool = 6,
     InsideGitRepo = 7,
+    UnknownProject = 8,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -30,6 +31,9 @@ pub enum OlfError {
 
     #[error("{0}")]
     BuildFailed(String),
+
+    #[error("{0}")]
+    UnknownProject(String),
 
     #[error("{tool} not found on PATH\nhint: {hint}")]
     MissingTool { tool: String, hint: String },
@@ -58,6 +62,7 @@ impl OlfError {
             Self::NotAProject(_) => Exit::NotAProject,
             Self::AuthFailed(_) => Exit::AuthFailed,
             Self::BuildFailed(_) => Exit::BuildFailed,
+            Self::UnknownProject(_) => Exit::UnknownProject,
             Self::MissingTool { .. } => Exit::MissingTool,
             Self::InsideGitRepo { .. } => Exit::InsideGitRepo,
             Self::Error(_) | Self::Io(_) => Exit::Error,

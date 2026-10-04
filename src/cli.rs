@@ -10,7 +10,19 @@ pub struct Cli {
     #[arg(short = 'C', global = true, value_name = "DIR")]
     pub dir: Option<PathBuf>,
 
-    /// Emit machine-readable JSON instead of human text (supported by `build`)
+    /// Run against a registered project: full ID, unique ID prefix, or workspace
+    /// directory name (see `olf list`)
+    ///
+    /// Short-only: `skill install --project` already owns the long name.
+    #[arg(
+        id = "project_query",
+        short = 'p',
+        global = true,
+        value_name = "PROJECT"
+    )]
+    pub project: Option<String>,
+
+    /// Emit machine-readable JSON instead of human text (supported by `build` and `list`)
     #[arg(long, global = true)]
     pub json: bool,
 
@@ -24,6 +36,12 @@ pub enum Command {
     Init(InitArgs),
     /// Compile locally with latexmk or tectonic
     Build(BuildArgs),
+    /// List registered projects
+    List(ListArgs),
+    /// Print the checkout path of the project
+    Path,
+    /// Open the checkout in $VISUAL / $EDITOR
+    Edit,
     /// Open the project on overleaf.com
     Open(OpenArgs),
     /// Manage bundled agent skills
@@ -45,6 +63,9 @@ pub struct InitArgs {
     /// Main .tex file, relative to the checkout (skips auto-detection)
     #[arg(long)]
     pub main: Option<PathBuf>,
+    /// Relink the index if this project is registered elsewhere
+    #[arg(long)]
+    pub force: bool,
     /// Workspace directory (default: cwd)
     pub path: Option<PathBuf>,
 }
@@ -57,6 +78,13 @@ pub struct BuildArgs {
     /// Override main file from .olf/config.toml
     #[arg(long)]
     pub main: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct ListArgs {
+    /// Remove links whose workspace no longer exists
+    #[arg(long)]
+    pub prune: bool,
 }
 
 #[derive(Args)]

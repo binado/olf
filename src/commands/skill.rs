@@ -2,8 +2,8 @@
 
 use crate::cli::SkillCommand;
 use crate::commands::init;
-use crate::config::Workspace;
-use crate::error::{Result, bail};
+use crate::config::{self, Workspace};
+use crate::error::Result;
 use crate::git;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -63,13 +63,7 @@ fn user_skills_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|d| !d.is_empty()) {
         return Ok(PathBuf::from(dir).join("skills"));
     }
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .filter(|h| !h.is_empty());
-    let Some(home) = home else {
-        bail!("cannot find your home directory (HOME is unset)");
-    };
-    Ok(PathBuf::from(home).join(".claude").join("skills"))
+    Ok(config::home_dir()?.join(".claude").join("skills"))
 }
 
 fn project_skills_dir() -> Result<PathBuf> {

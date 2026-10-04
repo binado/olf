@@ -4,6 +4,7 @@ use crate::cli::InitArgs;
 use crate::config::{self, Config, Workspace};
 use crate::error::{OlfError, Result, bail};
 use crate::git::{self, CredentialStatus, HookStatus};
+use crate::index::{self, RegisterStatus};
 use crate::overleaf::{self, ProjectId};
 use regex::Regex;
 use std::fs;
@@ -66,6 +67,9 @@ pub fn run(args: &InitArgs) -> Result<()> {
     let url = overleaf::git_url(&id);
     let token = args.token.as_deref().filter(|t| !t.is_empty());
 
+    // Fail on an index conflict before cloning, so it has no side effects.
+    index::check(&id, &target, args.force)?;
+
     if needs_clone(&checkout)? {
         fs::create_dir_all(&target)?;
         git::clone(&target, &url, &checkout, token)?;
@@ -127,6 +131,12 @@ pub fn run(args: &InitArgs) -> Result<()> {
         ),
     }
     git::ensure_exclude_block(&checkout, &exclude_lines(adopted))?;
+
+    if let RegisterStatus::Created | RegisterStatus::Relinked =
+        index::register(&id, &target, args.force)?
+    {
+        println!("registered in {}", index::index_dir()?.display());
+    }
 
     println!(
         "workspace ready: {} (project {id}, main {})",

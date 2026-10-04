@@ -7,6 +7,8 @@ project safe and convenient for coding agents (and pleasant for humans):
   Overleaf's rules (a single branch, linear history, no force pushes).
 - `olf build` compiles locally into `.olf/build/`, keeping each run's logs
   (timestamped) in `.olf/build/logs/` for the agent to read.
+- `olf list`, `olf path`, `olf edit` and the global `-p <project>` flag
+  find your papers from anywhere.
 - `olf skill install` installs agent skills that teach the workflow:
   sync discipline with co-authors editing in the browser, editing manners,
   and a build-fix loop.
@@ -49,6 +51,37 @@ preferred because Overleaf uses it) or [tectonic](https://tectonic-typesetting.g
 Already have an Overleaf clone? `olf init` inside it adopts it as the
 workspace.
 
+## Commands
+
+| Command | What it does |
+|---|---|
+| `olf init` | clone/adopt a project, configure it, register it in the index |
+| `olf build` | compile locally into `.olf/build/` (`--json` for machine output) |
+| `olf list [--prune]` | registered projects: ID, path, link status (`--json`); `--prune` removes links to deleted workspaces |
+| `olf path` | print the checkout directory |
+| `olf edit` | open the checkout in `$VISUAL`, else `$EDITOR` |
+| `olf open [--print]` | the project on overleaf.com |
+| `olf skill install` | install the bundled agent skills |
+
+### Working on any project from anywhere
+
+`olf init` registers each workspace as a symlink in `~/.olf/projects/<id>`
+(set `OLF_HOME` to use `$OLF_HOME/projects` instead). The global `-p` flag
+accepts a full project ID, a unique ID prefix, or the workspace directory
+name, and runs the command in that workspace:
+
+```sh
+olf -p dark build
+olf -p 64f0c0 path
+```
+
+One workspace per project ID per machine: initialising the same project
+elsewhere fails unless you pass `olf init --force`, which relinks the index.
+Use `-C <dir>` instead when you have a directory rather than a project.
+
+**Upgrading from v0.1:** workspaces created by v0.1 aren't in the index yet;
+re-run `olf init` in each one to register it.
+
 ## Workspace layout
 
 ```
@@ -72,8 +105,9 @@ never overwrites values you edited in `.olf/config.toml`.
 | 2 | not inside an olf workspace |
 | 3 | Overleaf rejected the git token |
 | 4 | build failed |
-| 6 | required tool (git, latexmk, tectonic) missing |
+| 5 | 6 | required tool (git, latexmk, tectonic) missing |
 | 7 | `init` target is inside a non-Overleaf git repo |
+| 8 | `-p` matched no registered project, or several |
 
 ## Development
 

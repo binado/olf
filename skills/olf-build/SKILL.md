@@ -7,7 +7,10 @@ description: Compile an Overleaf paper locally and fix LaTeX errors with `olf bu
 
 `olf build` compiles the paper locally (latexmk, or tectonic as a fallback)
 into `.olf/build/`, never into the checkout. It works from anywhere inside the
-workspace, or from elsewhere with `olf -C <workspace> build`.
+workspace, or from elsewhere with `olf -C <workspace> build` or
+`olf -p <project> build` (`-p` takes a project ID, a unique ID prefix or the
+workspace directory name; `olf list` shows what is registered, and
+`olf path` prints the checkout directory).
 
 | Exit code | Meaning |
 |---|---|
@@ -15,6 +18,7 @@ workspace, or from elsewhere with `olf -C <workspace> build`.
 | 2 | not inside an olf workspace |
 | 4 | the build failed; read the logs (below) |
 | 6 | no latexmk/tectonic installed: tell the user, don't try to install TeX yourself |
+| 8 | `-p` matched no registered project, or several |
 
 `olf build` doesn't summarize errors. It prints where this run's logs are:
 
