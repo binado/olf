@@ -76,9 +76,19 @@ pub struct Job<'a> {
     pub compiler: Compiler,
 }
 
+/// Directory of the main file, relative to the checkout. Overleaf compiles
+/// from there, so `\input` paths in a `notes/main.tex` are relative to `notes/`.
+pub fn main_dir(job: &Job) -> PathBuf {
+    job.main.parent().map(Path::to_path_buf).unwrap_or_default()
+}
+
 pub fn command(engine: &Resolved, job: &Job) -> Command {
+    let main = job
+        .main
+        .file_name()
+        .map_or_else(|| job.main.as_os_str(), |n| n);
     let mut cmd = Command::new(&engine.program);
-    cmd.current_dir(job.checkout)
+    cmd.current_dir(job.checkout.join(main_dir(job)))
         .stdin(Stdio::null())
         // Unwrapped log lines keep messages and file paths parseable.
         .env("max_print_line", "10000")
@@ -98,11 +108,11 @@ pub fn command(engine: &Resolved, job: &Job) -> Command {
                 "-halt-on-error",
             ])
             .arg(format!("-outdir={}", job.out_dir.display()))
-            .arg(job.main);
+            .arg(main);
         }
         Kind::Tectonic => {
             cmd.args(["-X", "compile"])
-                .arg(job.main)
+                .arg(main)
                 .arg("--outdir")
                 .arg(job.out_dir)
                 .arg("--keep-logs");
@@ -155,6 +165,20 @@ mod tests {
             ]
         );
         assert_eq!(cmd.get_current_dir(), Some(Path::new("/ws/paper")));
+    }
+
+    #[test]
+    fn runs_from_the_main_file_directory() {
+        let engine = Resolved {
+            kind: Kind::Latexmk,
+            program: "latexmk".into(),
+        };
+        let cmd = command(
+            &engine,
+            &job(Path::new("notes/main.tex"), Compiler::Pdflatex),
+        );
+        assert_eq!(cmd.get_current_dir(), Some(Path::new("/ws/paper/notes")));
+        assert_eq!(args(&cmd).last().unwrap(), "main.tex");
     }
 
     #[test]

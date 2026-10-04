@@ -56,9 +56,10 @@ pub fn run(args: &BuildArgs, json: bool) -> Result<()> {
         .map_err(|e| OlfError::Error(format!("cannot run {}: {e}", engine.program.display())))?;
 
     let log_path = engine::output_path(&job, "log");
-    let report = fs::read_to_string(&log_path)
+    let mut report = fs::read_to_string(&log_path)
         .map(|text| log::parse(&text))
         .unwrap_or_default();
+    relativize(&mut report, &engine::main_dir(&job));
     let log_path = log_path.is_file().then_some(log_path);
     let pdf = engine::output_path(&job, "pdf");
     let ok = output.status.success();
@@ -122,6 +123,21 @@ pub fn run(args: &BuildArgs, json: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Rewrite paths in diagnostics (relative to the main file's directory, where
+/// the engine ran) to be relative to the checkout, where agents edit.
+fn relativize(report: &mut log::Report, main_dir: &Path) {
+    if main_dir.as_os_str().is_empty() {
+        return;
+    }
+    for diagnostic in report.errors.iter_mut().chain(&mut report.warnings) {
+        if let Some(file) = &mut diagnostic.file {
+            if Path::new(file.as_str()).is_relative() {
+                *file = main_dir.join(&*file).to_string_lossy().into_owned();
+            }
+        }
+    }
 }
 
 fn print_human(report: &log::Report, warnings: bool) {
