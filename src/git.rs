@@ -107,6 +107,38 @@ pub fn git_path(dir: &Path, name: &str) -> Result<PathBuf> {
     })
 }
 
+/// Files changed in the working tree (modified, added, renamed to, untracked),
+/// relative to `dir`'s repository root. Deleted files are left out.
+pub fn changed_files(dir: &Path) -> Result<Vec<PathBuf>> {
+    let output = output(
+        dir,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )?;
+    check(&["status"], &output)?;
+    Ok(parse_status_z(&output.stdout))
+}
+
+fn parse_status_z(raw: &[u8]) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut fields = raw.split(|b| *b == 0).filter(|f| !f.is_empty());
+    while let Some(entry) = fields.next() {
+        if entry.len() < 4 {
+            continue;
+        }
+        let (x, y) = (entry[0], entry[1]);
+        let path = String::from_utf8_lossy(&entry[3..]).into_owned();
+        // Renames and copies are followed by the original path in its own field.
+        if matches!(x, b'R' | b'C') || matches!(y, b'R' | b'C') {
+            fields.next();
+        }
+        if x == b'D' || y == b'D' {
+            continue;
+        }
+        files.push(PathBuf::from(path));
+    }
+    files
+}
+
 pub fn set_config(dir: &Path, key: &str, value: &str) -> Result<()> {
     run(dir, &["config", "--local", key, value]).map(drop)
 }
@@ -312,6 +344,35 @@ pub mod tests {
 
     fn git(dir: &Path, args: &[&str]) -> String {
         run(dir, args).unwrap()
+    }
+
+    #[test]
+    fn parses_status_output() {
+        let raw = b" M a.tex\0?? new dir/b.tex\0R  new.tex\0old.tex\0 D gone.tex\0D  staged-gone.tex\0A  added.tex\0";
+        assert_eq!(
+            parse_status_z(raw),
+            [
+                PathBuf::from("a.tex"),
+                PathBuf::from("new dir/b.tex"),
+                PathBuf::from("new.tex"),
+                PathBuf::from("added.tex"),
+            ]
+        );
+    }
+
+    #[test]
+    fn changed_files_lists_worktree_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_, clone) = remote_and_clone(tmp.path());
+        fs::write(clone.join("main.tex"), "changed\n").unwrap();
+        fs::create_dir_all(clone.join("sec")).unwrap();
+        fs::write(clone.join("sec/new.tex"), "x\n").unwrap();
+        let mut files = changed_files(&clone).unwrap();
+        files.sort();
+        assert_eq!(
+            files,
+            [PathBuf::from("main.tex"), PathBuf::from("sec/new.tex")]
+        );
     }
 
     fn remote_and_clone(tmp: &Path) -> (PathBuf, PathBuf) {

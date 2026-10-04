@@ -24,3 +24,15 @@ fn requires_a_workspace() {
         .code(2)
         .stderr(predicate::str::contains("not inside an olf workspace"));
 }
+
+#[test]
+fn prints_project_url_via_project_flag() {
+    let env = Env::new();
+    env.workspace();
+    env.olf()
+        .current_dir(env.home())
+        .args(["-p", ID, "open", "--print"])
+        .assert()
+        .success()
+        .stdout(format!("https://www.overleaf.com/project/{ID}\n"));
+}

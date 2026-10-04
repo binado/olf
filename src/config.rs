@@ -1,7 +1,7 @@
 //! `.olf/config.toml` and workspace discovery.
 
 use crate::cli::Engine;
-use crate::error::{OlfError, Result};
+use crate::error::{OlfError, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,6 +9,17 @@ use toml_edit::{DocumentMut, Item};
 
 pub const OLF_DIR: &str = ".olf";
 pub const CONFIG_FILE: &str = "config.toml";
+
+/// The user's home directory (`HOME`, else `USERPROFILE` on Windows).
+pub fn home_dir() -> Result<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .filter(|h| !h.is_empty());
+    let Some(home) = home else {
+        bail!("cannot find your home directory (HOME is unset)");
+    };
+    Ok(PathBuf::from(home))
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -167,7 +178,12 @@ impl Workspace {
     }
 
     pub fn checkout_dir(&self) -> PathBuf {
-        self.root.join(&self.config.project_dir)
+        // `project_dir = "."` (adopted clones) must not print as `<root>/.`.
+        if self.config.project_dir == Path::new(".") {
+            self.root.clone()
+        } else {
+            self.root.join(&self.config.project_dir)
+        }
     }
 
     pub fn build_dir(&self) -> PathBuf {
