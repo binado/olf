@@ -4,10 +4,15 @@
 targets coding agents first (simple, non-interactive commands with concise
 output) while staying pleasant for humans.
 
-Plain `git clone` already works against Overleaf's git bridge, so the CLI's job
-is to add the conveniences and guardrails the bridge needs. The main
-differentiator is a set of **agent skills** that encode the workflow an agent
-would not know on its own.
+Plain `git clone` already works against Overleaf's git bridge, and agents are
+fluent in git, so `olf` does **not** wrap day-to-day git (pull, commit, push,
+status). Its job is to:
+
+1. **Configure** a checkout so the bridge's rules hold even when agents use
+   plain git (`olf init`).
+2. Provide what git can't: local **builds**, formatting, and project lookup.
+3. Ship **agent skills** that encode the workflow an agent would not know on
+   its own — the main differentiator.
 
 ## Background: the Overleaf git bridge
 
@@ -109,7 +114,8 @@ instead of repeated prompts or disabling the sandbox:
 
 ## Commands
 
-Global flags: `-C <dir>`, `-p/--project <project>`, `--json`.
+Global flags: `-C <dir>`, `-p/--project <project>`, `--json` (supported by
+`build` and `list`; other commands ignore it until a schema is needed).
 
 ### `olf init [--id <id> | --url <overleaf-url>] [--grant <agent>] [dir]`
 
@@ -128,25 +134,20 @@ Setup steps:
 
 - Token from `--token` or `OVERLEAF_GIT_TOKEN`; stored via a git credential
   helper (Keychain on macOS), not embedded in `.git/config`.
-- Write `.olf/config.toml` (auto-detect main file).
-- Configure the checkout for the bridge: `pull.rebase=true`; pre-push hook that
-  rejects force pushes and non-`master` branches.
+- Write `.olf/config.toml`, auto-detecting the main file: prefer `main.tex`;
+  else the single root file with `\documentclass` (ignoring `standalone` /
+  `subfiles` classes); otherwise prompt, or fail when non-interactive and ask
+  for `--main`.
+- Configure the checkout for the bridge, so plain git stays safe:
+  `pull.rebase=true` (linear history); pre-push hook that rejects force pushes
+  and non-`master` branches. The hook is a safety net only (`--no-verify`
+  bypasses it); the sync-discipline skill is the primary guardrail.
+- Auth failures during clone exit with `AuthFailed` and explain how to create
+  or refresh an Overleaf git token.
 - Add stray LaTeX artifacts (`*.aux`, `*.log`, …) to the checkout's
   `.git/info/exclude`, in case someone builds manually inside it.
 - Register the workspace in `~/.olf/projects/`.
 - With `--grant <agent>`: run `olf grant <agent>` for the cwd.
-
-### `olf status`
-
-Fetch and report whether the remote moved ahead (someone edited online) and
-whether there are local uncommitted/unpushed changes. Agents run this before
-editing.
-
-### `olf sync`
-
-Pull (rebase), then push. On a rejected push, re-pull and retry once. On
-conflicts, stop and print the conflicting files clearly instead of attempting
-anything clever.
 
 ### `olf build`
 
@@ -225,10 +226,11 @@ bundled.
 Implemented in Rust with clap's derive API. Agent-oriented conventions:
 
 - Global `-C <dir>` (like `git -C`) so agents never need to `cd`.
-- Global `--json` for machine-readable output on every command.
+- Global `--json` for machine-readable output, initially only for `build` and
+  `list` (each JSON schema is a compatibility promise).
 - Distinct exit codes so agents can branch on outcomes without parsing text.
 - Global `-p/--project` to act on any registered project from anywhere.
-- `sync` never commits: agents commit with plain `git` and their own messages;
+- No git wrappers: agents pull, commit and push with plain `git`;
   `olf` complements git rather than hiding it.
 
 ```rust
@@ -259,10 +261,6 @@ pub struct Cli {
 pub enum Command {
     /// Clone and/or set up an Overleaf project (idempotent)
     Init(InitArgs),
-    /// Show local changes and whether Overleaf moved ahead
-    Status(StatusArgs),
-    /// Pull (rebase) and push committed work
-    Sync(SyncArgs),
     /// Compile locally with latexmk or tectonic
     Build(BuildArgs),
     /// Format .tex files with tex-fmt (requires fmt.enabled)
@@ -301,22 +299,11 @@ pub struct InitArgs {
     /// Relink the index if this project is registered elsewhere
     #[arg(long)]
     pub force: bool,
+    /// Main .tex file (skips auto-detection)
+    #[arg(long)]
+    pub main: Option<PathBuf>,
     /// Workspace directory (default: cwd)
     pub path: Option<PathBuf>,
-}
-
-#[derive(Args)]
-pub struct StatusArgs {
-    /// Skip `git fetch` (offline / fast)
-    #[arg(long)]
-    pub no_fetch: bool,
-}
-
-#[derive(Args)]
-pub struct SyncArgs {
-    /// Show what would happen without pushing
-    #[arg(long)]
-    pub dry_run: bool,
 }
 
 #[derive(Args)]
@@ -409,15 +396,14 @@ pub enum Engine {
 #[repr(u8)]
 pub enum Exit {
     Ok = 0,
-    Error = 1,       // generic / usage
-    NotAProject = 2, // no .olf/config.toml found
-    Conflict = 3,    // sync hit merge conflicts
-    Rejected = 4,    // push rejected after retry
-    BuildFailed = 5,
-    Unformatted = 6, // fmt --check found diffs
-    MissingTool = 7, // latexmk / tectonic / tex-fmt not on PATH
-    InsideGitRepo = 8, // init target is inside a non-Overleaf repo
-    UnknownProject = 9, // -p didn't match (or matched several) projects
+    Error = 1,          // generic / usage
+    NotAProject = 2,    // no .olf/config.toml found
+    AuthFailed = 3,     // Overleaf rejected the git token
+    BuildFailed = 4,
+    Unformatted = 5,    // fmt --check found diffs
+    MissingTool = 6,    // latexmk / tectonic / tex-fmt not on PATH
+    InsideGitRepo = 7,  // init target is inside a non-Overleaf repo
+    UnknownProject = 8, // -p didn't match (or matched several) projects
 }
 ```
 
@@ -451,9 +437,15 @@ or `thiserror`, `which`, `open`.
 
 ## Skills (the differentiator)
 
-1. **Sync discipline** — `olf status` before editing; small, descriptive
-   commits; `olf sync` instead of raw push; never force push or branch; re-pull
-   after rejection.
+1. **Sync discipline** (core skill, plain git) — co-authors may be editing in
+   the browser right now, so:
+   - `git pull` before starting and before each push;
+   - small, descriptive commits; push soon after committing;
+   - if a push is rejected, `git pull` and push again;
+   - on a rebase conflict, stop and report the files — don't resolve
+     co-authors' text unasked;
+   - never force push, create branches, or rewrite pushed history;
+   - on auth failure, tell the user to refresh the Overleaf git token.
 2. **Collaborative editing manners** — don't reformat or re-wrap text you did
    not change; preserve `\label`s, macros, and existing style; only run
    `olf fmt` if the project enabled it.
@@ -465,10 +457,30 @@ or `thiserror`, `which`, `open`.
 5. *(Later)* **Writing tasks** — prose tightening, reference/citation checks,
    venue-specific formatting.
 
+## Releases
+
+| Release | Scope | Why |
+|---|---|---|
+| **v0.1** | `init`, `build`, `open`, `skill install` | The core loop: clone safely, edit with git, compile. Enough to dogfood on real papers. |
+| **v0.2** | `fmt`, project index, `list`, `path`, `edit`, `-p` | Conveniences that matter once there are several projects. |
+| **v0.3** | `grant`, `exec` | Depend on unverified agent-specific settings. |
+
+## Validation spike (before writing code)
+
+- Clone and push with a token on a free account; check how the credential
+  helper stores the token for `git.overleaf.com`.
+- Edit in the browser, then push locally: capture the exact rejection and
+  conflict output and save it as fixtures for the skills and tests.
+- Revoke the token and capture the auth-failure output (for `AuthFailed`).
+- Run latexmk with a separate output directory on real projects; check
+  packages known to struggle with it (`minted`, biber setups).
+
 ## Non-goals (v1)
 
-- Listing projects from the Overleaf account, triggering Overleaf compiles, reading Overleaf comments, or
-  anything else requiring cookie-based scraping.
+- Wrapping day-to-day git (`status`, `sync`, `pull`, `push`): agents use git
+  directly, guided by the sync-discipline skill.
+- Listing projects from the Overleaf account, triggering Overleaf compiles,
+  reading Overleaf comments, or anything else requiring cookie-based scraping.
 - MCP server — the CLI is already agent-usable via the shell; revisit if a
   need appears.
 - Shipping a TeX distribution.
@@ -500,4 +512,3 @@ or `thiserror`, `which`, `open`.
 - Exact settings keys for other agents (Codex, Gemini CLI) before adding them
   to `grant`/`exec`.
 - Multiple workspaces for the same project (e.g. parallel agent sessions).
-- Retry/backoff policy for `olf sync`.
