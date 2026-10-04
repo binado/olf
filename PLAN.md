@@ -18,7 +18,9 @@ status). Its job is to:
 
 - Clone URL: `https://git.overleaf.com/<project-id>`; auth with username `git`
   and an Overleaf git token as password.
-- Single branch (`master`), linear history, no force pushes.
+- Single branch (`main` on the project used for validation; the remote's
+  `HEAD` is authoritative, so older `master` projects work too), linear
+  history, no force pushes.
 - Collaborators may be editing in the browser concurrently: pushes get rejected
   when the remote moved ahead, and large diffs cause painful conflicts.
 - Everything pushed shows up as a file in the Overleaf project tree.
@@ -134,14 +136,17 @@ Setup steps:
 
 - Token from `--token` or `OVERLEAF_GIT_TOKEN`; stored via a git credential
   helper (Keychain on macOS), not embedded in `.git/config`.
-- Write `.olf/config.toml`, auto-detecting the main file: prefer `main.tex`;
-  else the single root file with `\documentclass` (ignoring `standalone` /
-  `subfiles` classes); otherwise prompt, or fail when non-interactive and ask
-  for `--main`.
+- Write `.olf/config.toml`, auto-detecting the main file: prefer a root
+  `main.tex`; else the single `.tex` file in any folder with `\documentclass`
+  (ignoring `standalone` / `subfiles` classes), or the single such file named
+  `main.tex`; otherwise prompt, or fail when non-interactive and ask for
+  `--main`.
 - Configure the checkout for the bridge, so plain git stays safe:
-  `pull.rebase=true` (linear history); pre-push hook that rejects force pushes
-  and non-`master` branches. The hook is a safety net only (`--no-verify`
-  bypasses it); the sync-discipline skill is the primary guardrail.
+  `pull.rebase=true` plus `pull.ff=true` (linear history; the latter keeps a
+  global `pull.ff=only` from refusing the rebase); pre-push hook that rejects force pushes
+  and pushes to any branch other than the remote's `HEAD`. The hook is a
+  safety net only (`--no-verify` bypasses it); the sync-discipline skill is
+  the primary guardrail.
 - Auth failures during clone exit with `AuthFailed` and explain how to create
   or refresh an Overleaf git token.
 - Add stray LaTeX artifacts (`*.aux`, `*.log`, …) to the checkout's
@@ -158,8 +163,13 @@ Compile locally for a fast edit → compile → fix loop.
 - Warn when falling back to tectonic for a non-XeTeX project, since its engine
   differs.
 - Output goes to `.olf/build/`, never the checkout.
-- Condense the log into `file:line: message` errors and warnings; full log
-  path printed for drill-down.
+- Run the engine from the main file's directory, as Overleaf does (a
+  `notes/main.tex` resolves `\input{utils}` to `notes/utils.tex`); report
+  paths relative to the checkout.
+- No log parsing: success is the engine's exit status. Each run's TeX log and
+  engine output are kept as timestamped files in `.olf/build/logs/` (last 20
+  builds), their paths printed, and the build skill teaches the agent to
+  search them (`file:line:` errors via `-file-line-error`, unwrapped lines).
 - Caveat: Overleaf pins a TeX Live version, so a local pass does not guarantee
   an Overleaf pass.
 
@@ -314,9 +324,6 @@ pub struct BuildArgs {
     /// Override main file from .olf/config.toml
     #[arg(long)]
     pub main: Option<PathBuf>,
-    /// Also print warnings (overfull boxes, undefined refs, ...)
-    #[arg(long)]
-    pub warnings: bool,
 }
 
 #[derive(Args)]
@@ -427,7 +434,6 @@ src/
   agents/        // per-agent grant/exec adapters (claude.rs first)
   latex/
     engine.rs    // detect + run latexmk / tectonic
-    log.rs       // condense .log → file:line: message
   commands/      // one module per subcommand
 skills/          // SKILL.md files, embedded via include_str!
 ```
@@ -449,7 +455,7 @@ or `thiserror`, `which`, `open`.
 2. **Collaborative editing manners** — don't reformat or re-wrap text you did
    not change; preserve `\label`s, macros, and existing style; only run
    `olf fmt` if the project enabled it.
-3. **Build-fix loop** — edit → `olf build` → read condensed errors → fix; give
+3. **Build-fix loop** — edit → `olf build` → search the saved log → fix; give
    up and report after N failed attempts instead of thrashing.
 4. **Access etiquette** — if the paper is outside the workspace and writes are
    blocked, ask the user to run `olf grant` (or grant that one directory)
@@ -470,7 +476,7 @@ or `thiserror`, `which`, `open`.
 - Clone and push with a token on a free account; check how the credential
   helper stores the token for `git.overleaf.com`.
 - Edit in the browser, then push locally: capture the exact rejection and
-  conflict output and save it as fixtures for the skills and tests.
+  conflict output to check the skills and tests against.
 - Revoke the token and capture the auth-failure output (for `AuthFailed`).
 - Run latexmk with a separate output directory on real projects; check
   packages known to struggle with it (`minted`, biber setups).
