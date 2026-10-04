@@ -20,9 +20,7 @@ fn run(cli: &Cli) -> Result<()> {
         Command::Init(args) => commands::init::run(args),
         Command::Build(args) => commands::build::run(args, cli.json),
         Command::Open(args) => commands::open::run(args),
-        Command::Skill(_) => {
-            error::bail!("not implemented yet")
-        }
+        Command::Skill(command) => commands::skill::run(command),
     }
 }
 

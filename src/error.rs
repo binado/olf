@@ -12,8 +12,6 @@ pub enum Exit {
     InsideGitRepo = 7,
 }
 
-// Variants are constructed as the commands land; dropped once all are wired.
-#[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub enum OlfError {
     #[error(
