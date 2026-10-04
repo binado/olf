@@ -93,12 +93,22 @@ fn auto_falls_back_to_tectonic_with_warning() {
         .code(6);
 }
 
+/// The saved logs of all builds, sorted oldest first.
+fn saved_logs(ws: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(ws.join(".olf/build/logs"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
 #[test]
-fn auto_prefers_latexmk_and_condenses_errors() {
+fn auto_prefers_latexmk_and_keeps_timestamped_logs() {
     let env = Env::new();
     let ws = env.workspace();
     let path = stub_path(&env, &[("latexmk", FAKE_LATEXMK), ("tectonic", "exit 99")]);
-    let log = "(./main.tex\n./main.tex:3: Undefined control sequence.\nl.3 \\foo\n)";
+    let log = "./main.tex:3: Undefined control sequence.";
     env.olf()
         .current_dir(ws.join("paper"))
         .env("PATH", &path)
@@ -107,34 +117,48 @@ fn auto_prefers_latexmk_and_condenses_errors() {
         .arg("build")
         .assert()
         .code(4)
-        .stdout(predicate::str::contains(
-            "main.tex:3: Undefined control sequence.\n    l.3 \\foo",
-        ))
-        .stderr(predicate::str::contains("build failed (latexmk, 1 error)"))
-        .stderr(predicate::str::contains(".olf/build/main.log"));
+        .stdout("")
+        .stderr(predicate::str::contains("build failed (latexmk, exit 12)"))
+        .stderr(predicate::str::contains(".olf/build/logs/"))
+        .stderr(predicate::str::contains("-main.log"));
+
+    let names = saved_logs(&ws);
+    assert_eq!(names.len(), 2, "{names:?}");
+    let base = names[0].strip_suffix(".log").unwrap();
+    assert_eq!(names[1], format!("{base}.out"));
+    assert!(base.ends_with("Z-main"), "{base}");
+    let saved = fs::read_to_string(ws.join(".olf/build/logs").join(&names[0])).unwrap();
+    assert_eq!(saved.trim_end(), log);
 
     let out = env
         .olf()
         .current_dir(&ws)
         .env("PATH", &path)
-        .env("LOG", log)
-        .env("CODE", "12")
+        .env("LOG", "fine")
+        .env("CODE", "0")
         .args(["--json", "build"])
         .assert()
-        .code(4)
+        .success()
         .get_output()
         .stdout
         .clone();
     let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
-    assert_eq!(json["ok"], false);
+    assert_eq!(json["ok"], true);
     assert_eq!(json["engine"], "latexmk");
-    assert_eq!(json["pdf"], serde_json::Value::Null);
-    assert_eq!(json["errors"][0]["file"], "main.tex");
-    assert_eq!(json["errors"][0]["line"], 3);
+    assert!(
+        json["pdf"]
+            .as_str()
+            .unwrap()
+            .ends_with(".olf/build/main.pdf")
+    );
+    let log = json["log"].as_str().unwrap();
+    assert_eq!(fs::read_to_string(log).unwrap().trim_end(), "fine");
+    assert!(json["output"].as_str().unwrap().ends_with("-main.out"));
+    assert_eq!(saved_logs(&ws).len(), 4);
 }
 
 #[test]
-fn unparseable_failure_shows_engine_output() {
+fn engine_output_is_kept_when_tex_never_ran() {
     let env = Env::new();
     let ws = env.workspace();
     let path = stub_path(
@@ -147,7 +171,12 @@ fn unparseable_failure_shows_engine_output() {
         .arg("build")
         .assert()
         .code(4)
-        .stderr(predicate::str::contains("biber: command not found"));
+        .stderr(predicate::str::contains("engine output:"))
+        .stderr(predicate::str::contains("log:").not());
+    let names = saved_logs(&ws);
+    assert_eq!(names.len(), 1, "{names:?}");
+    let out = fs::read_to_string(ws.join(".olf/build/logs").join(&names[0])).unwrap();
+    assert!(out.contains("biber: command not found"));
 }
 
 fn write_main(paper: &Path, body: &str) {
@@ -170,32 +199,22 @@ fn builds_real_document_with_latexmk() {
 
     env.olf()
         .current_dir(&ws)
-        .args(["build", "--warnings"])
+        .arg("build")
         .assert()
         .success()
         .stdout(predicate::str::contains("built"));
     assert!(ws.join(".olf/build/main.pdf").is_file());
     assert_eq!(git(&paper, &["status", "--porcelain"]), "");
 
-    write_main(&paper, "See \\ref{nowhere}.");
-    env.olf()
-        .current_dir(&ws)
-        .args(["build", "--warnings"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(
-            "warning: main.tex:3: Reference `nowhere' on page 1 undefined",
-        ));
-
     write_main(&paper, "Hello \\undefinedmacro.");
-    env.olf()
-        .current_dir(&ws)
-        .arg("build")
-        .assert()
-        .code(4)
-        .stdout(predicate::str::contains(
-            "main.tex:3: Undefined control sequence.",
-        ));
+    env.olf().current_dir(&ws).arg("build").assert().code(4);
+    // The newest saved log holds the error in -file-line-error form.
+    let newest = saved_logs(&ws)
+        .into_iter()
+        .rfind(|n| Path::new(n).extension().is_some_and(|e| e == "log"))
+        .unwrap();
+    let log = fs::read_to_string(ws.join(".olf/build/logs").join(newest)).unwrap();
+    assert!(log.contains("./main.tex:3: Undefined control sequence."));
     assert_eq!(
         git(&paper, &["status", "--porcelain"]),
         " M main.tex",

@@ -166,8 +166,10 @@ Compile locally for a fast edit → compile → fix loop.
 - Run the engine from the main file's directory, as Overleaf does (a
   `notes/main.tex` resolves `\input{utils}` to `notes/utils.tex`); report
   paths relative to the checkout.
-- Condense the log into `file:line: message` errors and warnings; full log
-  path printed for drill-down.
+- No log parsing: success is the engine's exit status. Each run's TeX log and
+  engine output are kept as timestamped files in `.olf/build/logs/` (last 20
+  builds), their paths printed, and the build skill teaches the agent to
+  search them (`file:line:` errors via `-file-line-error`, unwrapped lines).
 - Caveat: Overleaf pins a TeX Live version, so a local pass does not guarantee
   an Overleaf pass.
 
@@ -322,9 +324,6 @@ pub struct BuildArgs {
     /// Override main file from .olf/config.toml
     #[arg(long)]
     pub main: Option<PathBuf>,
-    /// Also print warnings (overfull boxes, undefined refs, ...)
-    #[arg(long)]
-    pub warnings: bool,
 }
 
 #[derive(Args)]
@@ -435,7 +434,6 @@ src/
   agents/        // per-agent grant/exec adapters (claude.rs first)
   latex/
     engine.rs    // detect + run latexmk / tectonic
-    log.rs       // condense .log → file:line: message
   commands/      // one module per subcommand
 skills/          // SKILL.md files, embedded via include_str!
 ```
@@ -457,7 +455,7 @@ or `thiserror`, `which`, `open`.
 2. **Collaborative editing manners** — don't reformat or re-wrap text you did
    not change; preserve `\label`s, macros, and existing style; only run
    `olf fmt` if the project enabled it.
-3. **Build-fix loop** — edit → `olf build` → read condensed errors → fix; give
+3. **Build-fix loop** — edit → `olf build` → search the saved log → fix; give
    up and report after N failed attempts instead of thrashing.
 4. **Access etiquette** — if the paper is outside the workspace and writes are
    blocked, ask the user to run `olf grant` (or grant that one directory)

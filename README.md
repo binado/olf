@@ -5,8 +5,8 @@ project safe and convenient for coding agents (and pleasant for humans):
 
 - `olf init` clones the project and configures it so plain `git` can't break
   Overleaf's rules (a single branch, linear history, no force pushes).
-- `olf build` compiles locally and condenses the TeX log into
-  `file:line: message` lines.
+- `olf build` compiles locally into `.olf/build/`, keeping each run's logs
+  (timestamped) in `.olf/build/logs/` for the agent to read.
 - `olf skill install` installs agent skills that teach the workflow:
   sync discipline with co-authors editing in the browser, editing manners,
   and a build-fix loop.

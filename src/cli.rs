@@ -57,9 +57,6 @@ pub struct BuildArgs {
     /// Override main file from .olf/config.toml
     #[arg(long)]
     pub main: Option<PathBuf>,
-    /// Also print warnings (overfull boxes, undefined refs, ...)
-    #[arg(long)]
-    pub warnings: bool,
 }
 
 #[derive(Args)]

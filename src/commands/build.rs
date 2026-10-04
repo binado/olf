@@ -1,22 +1,29 @@
-//! `olf build`: compile locally into `.olf/build/` and condense the log.
+//! `olf build`: compile locally into `.olf/build/`, keeping each run's logs.
+//!
+//! olf doesn't interpret the TeX log: success is the engine's exit status, and
+//! each run's log is kept under `.olf/build/logs/` for the agent to read.
 
 use crate::cli::BuildArgs;
 use crate::config::{Compiler, Workspace};
 use crate::error::{OlfError, Result, bail};
 use crate::latex::engine::{self, Job, Kind};
-use crate::latex::log::{self, Diagnostic};
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Builds whose logs are kept; older ones are deleted.
+const KEEP_BUILDS: usize = 20;
 
 #[derive(Serialize)]
 struct JsonReport<'a> {
     ok: bool,
     engine: Kind,
     pdf: Option<&'a Path>,
+    /// The TeX log of this run (absent if the engine never got that far).
     log: Option<&'a Path>,
-    errors: &'a [Diagnostic],
-    warnings: &'a [Diagnostic],
+    /// The engine's console output (latexmk, biber, ...).
+    output: &'a Path,
 }
 
 pub fn run(args: &BuildArgs, json: bool) -> Result<()> {
@@ -54,113 +61,179 @@ pub fn run(args: &BuildArgs, json: bool) -> Result<()> {
     let output = engine::command(&engine, &job)
         .output()
         .map_err(|e| OlfError::Error(format!("cannot run {}: {e}", engine.program.display())))?;
-
-    let log_path = engine::output_path(&job, "log");
-    let mut report = fs::read_to_string(&log_path)
-        .map(|text| log::parse(&text))
-        .unwrap_or_default();
-    relativize(&mut report, &engine::main_dir(&job));
-    let log_path = log_path.is_file().then_some(log_path);
-    let pdf = engine::output_path(&job, "pdf");
     let ok = output.status.success();
+
+    let logs = save_logs(&job, &output.stdout, &output.stderr)?;
+    prune_logs(&out_dir.join("logs"), KEEP_BUILDS)?;
+    let pdf = engine::output_path(&job, "pdf");
+    // A failed run may leave the previous PDF behind; never report that one.
     let pdf = (ok && pdf.is_file()).then_some(pdf);
 
     if json {
-        let json = JsonReport {
+        let report = JsonReport {
             ok,
             engine: engine.kind,
             pdf: pdf.as_deref(),
-            log: log_path.as_deref(),
-            errors: &report.errors,
-            warnings: &report.warnings,
+            log: logs.tex.as_deref(),
+            output: &logs.output,
         };
         println!(
             "{}",
-            serde_json::to_string_pretty(&json).expect("report serializes")
+            serde_json::to_string_pretty(&report).expect("report serializes")
         );
-    } else {
-        print_human(&report, args.warnings);
     }
 
-    let log_note = log_path
+    let log_line = logs
+        .tex
         .as_ref()
-        .map(|p| format!("full log: {}", p.display()));
+        .map(|log| format!("\nlog: {}", log.display()))
+        .unwrap_or_default();
+    let paths = format!("{log_line}\nengine output: {}", logs.output.display());
     if !ok {
-        let mut message = format!(
-            "build failed ({}, {} error{})",
-            engine.kind.name(),
-            report.errors.len(),
-            if report.errors.len() == 1 { "" } else { "s" }
-        );
-        if report.errors.is_empty() {
-            // Nothing parseable (e.g. biber failed): show what the engine said.
-            message.push('\n');
-            message.push_str(&tail(&output.stdout, &output.stderr, 20));
-        }
-        if let Some(note) = log_note {
-            message.push('\n');
-            message.push_str(&note);
-        }
-        return Err(OlfError::BuildFailed(message));
+        let status = output
+            .status
+            .code()
+            .map_or_else(|| "killed".into(), |c| format!("exit {c}"));
+        return Err(OlfError::BuildFailed(format!(
+            "build failed ({}, {status}){paths}",
+            engine.kind.name()
+        )));
     }
     if !json {
-        let shown = if args.warnings || report.warnings.is_empty() {
-            String::new()
-        } else {
-            " (--warnings to show)".into()
-        };
-        println!(
-            "built {} with {}, {} warning{}{shown}",
-            pdf.as_deref()
-                .map_or_else(|| PathBuf::from("?"), Path::to_path_buf)
-                .display(),
-            engine.kind.name(),
-            report.warnings.len(),
-            if report.warnings.len() == 1 { "" } else { "s" },
-        );
-        if let Some(note) = log_note {
-            println!("{note}");
+        let pdf = pdf.map_or_else(|| "no PDF produced".into(), |p| p.display().to_string());
+        println!("built {pdf} with {}{paths}", engine.kind.name());
+    }
+    Ok(())
+}
+
+struct SavedLogs {
+    tex: Option<PathBuf>,
+    output: PathBuf,
+}
+
+/// Copy this run's TeX log and console output to `logs/<timestamp>-<stem>.*`.
+fn save_logs(job: &Job, stdout: &[u8], stderr: &[u8]) -> Result<SavedLogs> {
+    let dir = job.out_dir.join("logs");
+    fs::create_dir_all(&dir)?;
+    let stem = job
+        .main
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let stamp = timestamp(SystemTime::now());
+    // Two builds within a second get distinct names; `.` sorts after `-`, so
+    // lexical order stays chronological.
+    let mut base = format!("{stamp}-{stem}");
+    let mut n = 1;
+    while dir.join(format!("{base}.out")).exists() {
+        n += 1;
+        base = format!("{stamp}.{n}-{stem}");
+    }
+
+    let output = dir.join(format!("{base}.out"));
+    fs::write(&output, [stdout, stderr].concat())?;
+    let tex_log = engine::output_path(job, "log");
+    let tex = if tex_log.is_file() {
+        let saved = dir.join(format!("{base}.log"));
+        fs::copy(&tex_log, &saved)?;
+        Some(saved)
+    } else {
+        None
+    };
+    Ok(SavedLogs { tex, output })
+}
+
+/// Keep only the newest `keep` builds' logs (names sort chronologically).
+fn prune_logs(dir: &Path, keep: usize) -> Result<()> {
+    let mut outs: Vec<PathBuf> = fs::read_dir(dir)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|e| e == "out"))
+        .collect();
+    outs.sort();
+    let excess = outs.len().saturating_sub(keep);
+    for out in &outs[..excess] {
+        fs::remove_file(out)?;
+        let log = out.with_extension("log");
+        if log.is_file() {
+            fs::remove_file(log)?;
         }
     }
     Ok(())
 }
 
-/// Rewrite paths in diagnostics (relative to the main file's directory, where
-/// the engine ran) to be relative to the checkout, where agents edit.
-fn relativize(report: &mut log::Report, main_dir: &Path) {
-    if main_dir.as_os_str().is_empty() {
-        return;
-    }
-    for diagnostic in report.errors.iter_mut().chain(&mut report.warnings) {
-        if let Some(file) = &mut diagnostic.file {
-            if Path::new(file.as_str()).is_relative() {
-                *file = main_dir.join(&*file).to_string_lossy().into_owned();
-            }
-        }
-    }
+/// UTC time as `2026-10-04T15-30-12Z` (no colons, so it's a valid file name
+/// everywhere, and lexical order is chronological).
+fn timestamp(time: SystemTime) -> String {
+    let secs = time.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let (days, rem) = (secs / 86_400, secs % 86_400);
+    let (year, month, day) = civil_from_days(days);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}-{:02}-{:02}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
 }
 
-fn print_human(report: &log::Report, warnings: bool) {
-    for error in &report.errors {
-        println!("{error}");
-        if let Some(context) = &error.context {
-            println!("    {context}");
-        }
-    }
-    if warnings {
-        for warning in &report.warnings {
-            println!("warning: {warning}");
-        }
-    }
+/// Days since 1970-01-01 to a (year, month, day) date, after Howard Hinnant's
+/// `civil_from_days` (restricted to dates after the epoch).
+fn civil_from_days(days: u64) -> (u64, u64, u64) {
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z % 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + u64::from(month <= 2);
+    (year, month, day)
 }
 
-/// The last `n` lines of the engine's combined output.
-fn tail(stdout: &[u8], stderr: &[u8], n: usize) -> String {
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(stdout),
-        String::from_utf8_lossy(stderr)
-    );
-    let lines: Vec<&str> = text.lines().collect();
-    lines[lines.len().saturating_sub(n)..].join("\n")
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn timestamps_are_utc_and_file_name_safe() {
+        assert_eq!(timestamp(UNIX_EPOCH), "1970-01-01T00-00-00Z");
+        let t = UNIX_EPOCH + Duration::from_secs(1_791_127_812);
+        assert_eq!(timestamp(t), "2026-10-04T15-30-12Z");
+        let leap = UNIX_EPOCH + Duration::from_secs(1_709_208_000);
+        assert_eq!(timestamp(leap), "2024-02-29T12-00-00Z");
+    }
+
+    #[test]
+    fn prune_keeps_newest_builds() {
+        let tmp = tempfile::tempdir().unwrap();
+        for i in 0..5 {
+            fs::write(
+                tmp.path().join(format!("2026-01-0{i}T00-00-00Z-main.out")),
+                "",
+            )
+            .unwrap();
+            fs::write(
+                tmp.path().join(format!("2026-01-0{i}T00-00-00Z-main.log")),
+                "",
+            )
+            .unwrap();
+        }
+        prune_logs(tmp.path(), 2).unwrap();
+        let mut left: Vec<String> = fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                "2026-01-03T00-00-00Z-main.log",
+                "2026-01-03T00-00-00Z-main.out",
+                "2026-01-04T00-00-00Z-main.log",
+                "2026-01-04T00-00-00Z-main.out",
+            ]
+        );
+    }
 }
