@@ -1,0 +1,9 @@
+Cloning into 'x'...
+remote: Enter your Git authentication token when prompted for a password.
+remote: 
+remote: You can generate and manage your Git authentication tokens in
+remote: your Overleaf Account Settings.
+remote: 
+remote: See our help page for more support:
+remote: https://www.overleaf.com/learn/how-to/Git_integration
+fatal: Authentication failed for 'https://git.overleaf.com/67bc8c6363a7966570dc8dd5/'

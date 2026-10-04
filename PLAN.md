@@ -18,7 +18,9 @@ status). Its job is to:
 
 - Clone URL: `https://git.overleaf.com/<project-id>`; auth with username `git`
   and an Overleaf git token as password.
-- Single branch (`master`), linear history, no force pushes.
+- Single branch (`main` on the project used for validation; the remote's
+  `HEAD` is authoritative, so older `master` projects work too), linear
+  history, no force pushes.
 - Collaborators may be editing in the browser concurrently: pushes get rejected
   when the remote moved ahead, and large diffs cause painful conflicts.
 - Everything pushed shows up as a file in the Overleaf project tree.
@@ -134,14 +136,16 @@ Setup steps:
 
 - Token from `--token` or `OVERLEAF_GIT_TOKEN`; stored via a git credential
   helper (Keychain on macOS), not embedded in `.git/config`.
-- Write `.olf/config.toml`, auto-detecting the main file: prefer `main.tex`;
-  else the single root file with `\documentclass` (ignoring `standalone` /
-  `subfiles` classes); otherwise prompt, or fail when non-interactive and ask
-  for `--main`.
+- Write `.olf/config.toml`, auto-detecting the main file: prefer a root
+  `main.tex`; else the single `.tex` file in any folder with `\documentclass`
+  (ignoring `standalone` / `subfiles` classes), or the single such file named
+  `main.tex`; otherwise prompt, or fail when non-interactive and ask for
+  `--main`.
 - Configure the checkout for the bridge, so plain git stays safe:
   `pull.rebase=true` (linear history); pre-push hook that rejects force pushes
-  and non-`master` branches. The hook is a safety net only (`--no-verify`
-  bypasses it); the sync-discipline skill is the primary guardrail.
+  and pushes to any branch other than the remote's `HEAD`. The hook is a
+  safety net only (`--no-verify` bypasses it); the sync-discipline skill is
+  the primary guardrail.
 - Auth failures during clone exit with `AuthFailed` and explain how to create
   or refresh an Overleaf git token.
 - Add stray LaTeX artifacts (`*.aux`, `*.log`, …) to the checkout's
@@ -158,6 +162,9 @@ Compile locally for a fast edit → compile → fix loop.
 - Warn when falling back to tectonic for a non-XeTeX project, since its engine
   differs.
 - Output goes to `.olf/build/`, never the checkout.
+- Run the engine from the main file's directory, as Overleaf does (a
+  `notes/main.tex` resolves `\input{utils}` to `notes/utils.tex`); report
+  paths relative to the checkout.
 - Condense the log into `file:line: message` errors and warnings; full log
   path printed for drill-down.
 - Caveat: Overleaf pins a TeX Live version, so a local pass does not guarantee

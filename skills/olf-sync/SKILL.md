@@ -11,12 +11,13 @@ the workspace). Run git **inside the checkout** (`git -C paper ...`).
 
 Overleaf's git bridge is not GitHub:
 
-- There is exactly one branch, `master`, with linear history.
+- There is exactly one branch (whatever `origin/HEAD` points at, usually
+  `main`; older projects may use `master`), with linear history.
 - Co-authors edit the same files in the browser, often at the same moment.
 - Every file you push appears in the Overleaf project tree for everyone.
 
 `olf init` already set `pull.rebase=true` and a pre-push hook that rejects
-force pushes, deletions and non-`master` pushes. The hook is a safety net,
+force pushes, deletions and pushes to any other branch. The hook is a safety net,
 not permission to try those things.
 
 ## Rules

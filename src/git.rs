@@ -160,14 +160,26 @@ const PRE_PUSH_HOOK: &str = r#"#!/bin/sh
 # olf-managed: pre-push guard for the Overleaf git bridge.
 # Re-run `olf init` to update it. Bypass (not recommended): git push --no-verify
 #
-# The bridge has a single `master` branch and linear history, so reject
-# pushes to other refs, deletions, and non-fast-forward (force) pushes.
+# The bridge has a single branch (the remote's HEAD, e.g. `main` or
+# `master`) and linear history, so reject pushes to
+# other refs, deletions, and non-fast-forward (force) pushes.
+
+remote="$1"
+branch=$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null)
+branch=${branch#"$remote"/}
+allowed=${branch:+refs/heads/$branch}
+# Pushing by URL or without a known remote HEAD: accept either default name.
+allowed=${allowed:-refs/heads/main refs/heads/master}
 
 status=0
 while read -r local_ref local_sha remote_ref remote_sha; do
-  if [ "$remote_ref" != "refs/heads/master" ]; then
-    echo "olf: refusing to push to $remote_ref: Overleaf only has refs/heads/master" >&2
-    echo "olf: push with \`git push origin HEAD:master\` from an up-to-date master" >&2
+  ok=
+  for ref in $allowed; do
+    [ "$remote_ref" = "$ref" ] && ok=1
+  done
+  if [ -z "$ok" ]; then
+    echo "olf: refusing to push to $remote_ref: this Overleaf project only has $allowed" >&2
+    echo "olf: pull, then push that branch with plain \`git push\`" >&2
     status=1
     continue
   fi
@@ -302,20 +314,24 @@ pub mod tests {
         run(dir, args).unwrap()
     }
 
-    /// A bare `master` remote with one commit, and a clone of it.
     fn remote_and_clone(tmp: &Path) -> (PathBuf, PathBuf) {
+        remote_and_clone_on(tmp, "master")
+    }
+
+    /// A bare remote with one commit on `branch` (its HEAD), and a clone of it.
+    fn remote_and_clone_on(tmp: &Path, branch: &str) -> (PathBuf, PathBuf) {
         let remote = tmp.join("remote.git");
         let clone_dir = tmp.join("clone");
         fs::create_dir_all(&remote).unwrap();
-        git(&remote, &["init", "--quiet", "--bare", "-b", "master"]);
-        git(tmp, &["init", "--quiet", "-b", "master", "seed"]);
+        git(&remote, &["init", "--quiet", "--bare", "-b", branch]);
+        git(tmp, &["init", "--quiet", "-b", branch, "seed"]);
         let seed = tmp.join("seed");
         fs::write(seed.join("main.tex"), "hello\n").unwrap();
         git(&seed, &["add", "."]);
         git(&seed, &["commit", "--quiet", "-m", "init"]);
         git(
             &seed,
-            &["push", "--quiet", remote.to_str().unwrap(), "master"],
+            &["push", "--quiet", remote.to_str().unwrap(), branch],
         );
         clone(tmp, remote.to_str().unwrap(), &clone_dir, None).unwrap();
         (remote, clone_dir)
@@ -365,28 +381,41 @@ pub mod tests {
         assert_eq!(fs::read_to_string(&hook).unwrap(), "#!/bin/sh\nexit 0\n");
     }
 
-    #[test]
-    fn hook_allows_fast_forward_and_rejects_unsafe_pushes() {
+    fn assert_hook_guards(branch: &str) {
         let tmp = tempfile::tempdir().unwrap();
-        let (_, dir) = remote_and_clone(tmp.path());
+        let (_, dir) = remote_and_clone_on(tmp.path(), branch);
         install_pre_push_hook(&dir).unwrap();
 
         commit(&dir, "a.tex", "a");
-        git(&dir, &["push", "--quiet", "origin", "master"]);
+        git(&dir, &["push", "--quiet"]);
 
-        let err = run(&dir, &["push", "origin", "HEAD:other"]).unwrap_err();
-        assert!(
-            err.to_string().contains("only has refs/heads/master"),
-            "{err}"
-        );
+        let other = if branch == "main" { "master" } else { "main" };
+        for target in ["HEAD:other".to_owned(), format!("HEAD:{other}")] {
+            let err = run(&dir, &["push", "origin", &target]).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains(&format!("only has refs/heads/{branch}")),
+                "{err}"
+            );
+        }
 
         git(&dir, &["reset", "--quiet", "--hard", "HEAD~1"]);
         commit(&dir, "b.tex", "b");
-        let err = run(&dir, &["push", "--force", "origin", "master"]).unwrap_err();
+        let err = run(&dir, &["push", "--force", "origin", branch]).unwrap_err();
         assert!(err.to_string().contains("non-fast-forward"), "{err}");
 
-        let err = run(&dir, &["push", "origin", ":master"]).unwrap_err();
+        let err = run(&dir, &["push", "origin", &format!(":{branch}")]).unwrap_err();
         assert!(err.to_string().contains("refusing to delete"), "{err}");
+    }
+
+    #[test]
+    fn hook_guards_master_projects() {
+        assert_hook_guards("master");
+    }
+
+    #[test]
+    fn hook_guards_main_projects() {
+        assert_hook_guards("main");
     }
 
     #[test]
@@ -401,6 +430,12 @@ pub mod tests {
             dir.canonicalize().unwrap()
         );
         assert_eq!(origin_url(&dir).unwrap(), remote.to_str().unwrap());
+    }
+
+    #[test]
+    fn classifies_real_bridge_auth_failure() {
+        let stderr = include_str!("../tests/fixtures/git/clone-bad-token.txt");
+        assert!(is_auth_failure(stderr));
     }
 
     #[test]
