@@ -23,15 +23,15 @@ would not know on its own.
 
 ## Configuration: `.overleafrc`
 
-Per-project TOML file at the checkout root, written by `olf checkout` /
-`olf init`. `olf` finds it by walking up from the cwd (like git finds `.git`),
+Per-project TOML file at the checkout root, written by `olf init`.
+`olf` finds it by walking up from the cwd (like git finds `.git`),
 so no global registry is needed.
 
 ```toml
 project_id = "64f0c0ffee..."
 
 [build]
-main = "main.tex"          # auto-detected at checkout (file with \documentclass)
+main = "main.tex"          # auto-detected by `olf init` (file with \documentclass)
 compiler = "pdflatex"      # pdflatex | xelatex | lualatex — mirror Overleaf's setting
 engine = "auto"            # auto | latexmk | tectonic
 outdir = ".olf/build"
@@ -45,11 +45,19 @@ The token is **never** stored in the rc file or the git remote URL.
 
 ## Commands
 
-### `olf checkout (--id <id> | --url <overleaf-url>) [dir]`
+### `olf init [--id <id> | --url <overleaf-url>] [dir]`
 
-Clone a project and set it up for safe use:
+One command to make a directory an olf project, cloning if needed:
 
-- Accept a project ID or any Overleaf project URL (extract the ID).
+- **With `--id`/`--url`**: clone into `dir` (default: project name/ID), then
+  set up. Accepts any Overleaf project URL (extract the ID).
+- **Without**: `dir` (default: cwd) must already be an Overleaf clone; the
+  project ID is read from `git remote get-url origin`.
+- **Idempotent**: re-running repairs/updates the setup and never overwrites
+  user-edited rc values. If `dir` is a clone of a *different* project, error.
+
+Setup steps:
+
 - Token from `--token` or `OVERLEAF_GIT_TOKEN`; stored via a git credential
   helper (Keychain on macOS), not embedded in `.git/config`.
 - Write `.overleafrc` (auto-detect main file).
@@ -57,11 +65,6 @@ Clone a project and set it up for safe use:
   force pushes and non-`master` branches.
 - Add `.olf/` and LaTeX build artifacts to `.git/info/exclude` (local only, so
   no `.gitignore` leaks into the Overleaf project).
-
-### `olf init`
-
-Same setup as `checkout` (rc file, git config, excludes) for an existing clone.
-Project ID is read from `git remote get-url origin`.
 
 ### `olf status`
 
