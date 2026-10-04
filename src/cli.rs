@@ -36,8 +36,6 @@ pub enum Command {
     Init(InitArgs),
     /// Compile locally with latexmk or tectonic
     Build(BuildArgs),
-    /// Format changed .tex files with tex-fmt (opt-in)
-    Fmt(FmtArgs),
     /// List registered projects
     List(ListArgs),
     /// Print the checkout path of the project
@@ -80,18 +78,6 @@ pub struct BuildArgs {
     /// Override main file from .olf/config.toml
     #[arg(long)]
     pub main: Option<PathBuf>,
-}
-
-#[derive(Args)]
-pub struct FmtArgs {
-    /// Format all .tex files, not only changed ones
-    #[arg(long, conflicts_with = "paths")]
-    pub all: bool,
-    /// Report unformatted files without writing; non-zero exit if any
-    #[arg(long)]
-    pub check: bool,
-    /// Explicit files to format
-    pub paths: Vec<PathBuf>,
 }
 
 #[derive(Args)]

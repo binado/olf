@@ -8,7 +8,6 @@ pub enum Exit {
     NotAProject = 2,
     AuthFailed = 3,
     BuildFailed = 4,
-    Unformatted = 5,
     MissingTool = 6,
     InsideGitRepo = 7,
     UnknownProject = 8,
@@ -32,9 +31,6 @@ pub enum OlfError {
 
     #[error("{0}")]
     BuildFailed(String),
-
-    #[error("{0}")]
-    Unformatted(String),
 
     #[error("{0}")]
     UnknownProject(String),
@@ -66,7 +62,6 @@ impl OlfError {
             Self::NotAProject(_) => Exit::NotAProject,
             Self::AuthFailed(_) => Exit::AuthFailed,
             Self::BuildFailed(_) => Exit::BuildFailed,
-            Self::Unformatted(_) => Exit::Unformatted,
             Self::UnknownProject(_) => Exit::UnknownProject,
             Self::MissingTool { .. } => Exit::MissingTool,
             Self::InsideGitRepo { .. } => Exit::InsideGitRepo,

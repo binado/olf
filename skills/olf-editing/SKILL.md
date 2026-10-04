@@ -14,11 +14,8 @@ make their review painful.
 - **Don't reformat, re-wrap or re-indent** text you didn't otherwise touch.
   Keep the existing line breaks; if a paragraph uses one sentence per line,
   continue that, and if it uses long lines, keep them long.
-- **Don't run formatters** over files. Only use `olf fmt` if the project
-  enabled it (`fmt.enabled = true` in `.olf/config.toml`). It formats just the
-  files you changed; never pass `--all` unless the user asked for it.
-  `olf fmt --check` reports without writing and exits 5 if something is
-  unformatted.
+- **Don't run formatters** over files unless the user asks; whole-file
+  reformatting is exactly the noisy diff co-authors dislike.
 - Don't "tidy" unrelated things: whitespace, comment blocks, commented-out
   text, package order, or spelling variants (British vs American) elsewhere.
 - Keep each edit easy to review: a reader of the diff should see exactly what

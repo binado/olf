@@ -25,7 +25,6 @@ fn run(cli: &Cli) -> Result<()> {
     match &cli.command {
         Command::Init(args) => commands::init::run(args),
         Command::Build(args) => commands::build::run(args, cli.json),
-        Command::Fmt(args) => commands::fmt::run(args),
         Command::List(args) => commands::list::run(args, cli.json),
         Command::Path => commands::path::run(),
         Command::Edit => commands::edit::run(),

@@ -17,7 +17,6 @@ workspace directory name; `olf list` shows what is registered, and
 | 0 | built; PDF path printed |
 | 2 | not inside an olf workspace |
 | 4 | the build failed; read the logs (below) |
-| 5 | `olf fmt --check` found unformatted files (not from `build`) |
 | 6 | no latexmk/tectonic installed: tell the user, don't try to install TeX yourself |
 | 8 | `-p` matched no registered project, or several |
 
