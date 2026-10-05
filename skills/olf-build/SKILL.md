@@ -34,7 +34,7 @@ engine output: <workspace>/.olf/build/logs/2026-10-04T15-30-12Z-main.out
 - Each build gets its own timestamped pair (UTC, sortable), and the last 20
   builds are kept. Compare the newest log with an earlier one to see what
   your change introduced.
-- `--json` prints `{ ok, engine, pdf, log, output }` instead.
+- `olf build --json` prints `{ ok, engine, pdf, log, output }` instead.
 
 ## Reading a TeX log
 

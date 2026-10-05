@@ -78,8 +78,8 @@ workspace.
 | Command | What it does |
 |---|---|
 | `olf init` | clone/adopt a project, configure it, register it in the index |
-| `olf build` | compile locally into `.olf/build/` (`--json` for machine output) |
-| `olf list [--prune]` | registered projects: ID, path, link status (`--json`); `--prune` removes links to deleted workspaces |
+| `olf build [--json]` | compile locally into `.olf/build/` (`--json` for machine output) |
+| `olf list [--json] [--prune]` | registered projects: ID, path, link status (`--json`); `--prune` removes links to deleted workspaces |
 | `olf path` | print the checkout directory |
 | `olf edit` | open the checkout in `$VISUAL`, else `$EDITOR` |
 | `olf grant <agent> [--repo <dir>]` | persistently allow an agent in a repo to write the checkout (`claude`) |
