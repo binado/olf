@@ -204,6 +204,4 @@ run manually; CI currently validates packages without publishing them.
 
 ## License
 
-Licensed under either the [MIT license](https://github.com/binado/olf/blob/main/LICENSE-MIT)
-or the [Apache License 2.0](https://github.com/binado/olf/blob/main/LICENSE-APACHE),
-at your option.
+Licensed under the [MIT license](https://github.com/binado/olf/blob/main/LICENSE-MIT).
