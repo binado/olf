@@ -34,7 +34,6 @@ fn run(cli: &Cli) -> Result<()> {
         Command::Open(args) => commands::open::run(args),
         Command::Grant(args) => commands::grant::run(args, &invocation_dir),
         Command::Exec(args) => commands::exec::run(args, &invocation_dir),
-        Command::Skill(command) => commands::skill::run(command),
     }
 }
 

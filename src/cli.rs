@@ -12,8 +12,6 @@ pub struct Cli {
 
     /// Run against a registered project: full ID, unique ID prefix, or workspace
     /// directory name (see `olf list`)
-    ///
-    /// Short-only: `skill install --project` already owns the long name.
     #[arg(
         id = "project_query",
         short = 'p',
@@ -51,9 +49,6 @@ pub enum Command {
     Grant(GrantArgs),
     /// Launch an agent with access to the checkout for one session
     Exec(ExecArgs),
-    /// Manage bundled agent skills
-    #[command(subcommand)]
-    Skill(SkillCommand),
 }
 
 #[derive(Args)]
@@ -124,21 +119,6 @@ pub struct OpenArgs {
     /// Print the URL instead of opening a browser
     #[arg(long)]
     pub print: bool,
-}
-
-#[derive(Subcommand)]
-pub enum SkillCommand {
-    /// Install skills (default: ~/.claude/skills/)
-    Install {
-        /// Install into the workspace's .claude/skills/ instead
-        #[arg(long)]
-        project: bool,
-        /// Overwrite existing skill files
-        #[arg(long)]
-        force: bool,
-    },
-    /// List bundled skills
-    List,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
