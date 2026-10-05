@@ -10,7 +10,7 @@ project safe and convenient for coding agents (and pleasant for humans):
   (timestamped) in `.olf/build/logs/` for the agent to read.
 - `olf list`, `olf path`, `olf edit` and the global `-p <project>` flag
   find your papers from anywhere.
-- `olf skill install` installs agent skills that teach the workflow:
+- Agent skills in `skills/` teach the workflow:
   sync discipline with co-authors editing in the browser, editing manners,
   a build-fix loop, and what to do when the paper is outside the sandbox.
 - `olf grant` / `olf exec` let an agent running in your *code* repo write
@@ -55,15 +55,20 @@ has no CI coverage. Building from source requires Rust 1.85 or newer.
    }
    ```
 
-3. Install the skills for Claude Code, then work as usual:
+3. Install the skills, then work as usual:
 
    ```sh
-   olf skill install            # ~/.claude/skills/ (or --project)
+   npx skills add binado/olf -g  # install globally for your agents
    cd ~/papers/dark-matter
    olf build                    # PDF in .olf/build/
    git -C paper pull && git -C paper push
    olf open                     # the project on overleaf.com
    ```
+
+   The skills are plain [Agent Skills](https://agentskills.io)
+   (`skills/<name>/SKILL.md` in this repo). The [skills CLI](https://github.com/vercel-labs/skills)
+   lets you choose which agents to install them for; omit `-g` to install
+   into the current project instead.
 
 Already have an Overleaf clone? `olf init` inside it adopts it as the
 workspace.
@@ -80,7 +85,6 @@ workspace.
 | `olf grant <agent> [--repo <dir>]` | persistently allow an agent in a repo to write the checkout (`claude`) |
 | `olf exec -- <agent> [args...]` | launch an agent with checkout access for one session |
 | `olf open [--print]` | the project on overleaf.com |
-| `olf skill install` | install the bundled agent skills |
 
 ### Working on any project from anywhere
 
