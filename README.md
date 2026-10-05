@@ -171,8 +171,18 @@ Pedantic Clippy lints are enabled. The real-TeX test skips without `latexmk`.
 
 ## Releasing
 
-Update the version and changelog, then commit the release changes. From a
-clean checkout, run:
+[release-plz](https://release-plz.dev/docs/config) manages the version,
+`Cargo.lock`, changelog, crates.io publication, and GitHub releases using
+`release-plz.toml`. Tags and GitHub releases use `v<version>`.
+
+From a clean checkout of `main`, open a release PR:
+
+```sh
+release-plz release-pr --git-token "$GITHUB_TOKEN"
+```
+
+Review the generated version and changelog, and run these checks on the
+release PR branch:
 
 ```sh
 just release-check
@@ -180,8 +190,17 @@ just release-check
 
 This runs formatting, linting, and tests, lists the packaged files, and runs
 `cargo publish --dry-run`. Review the file list and resolve any warnings
-before publishing with `cargo publish`. After publishing, tag the release
-commit as `v<version>` and push the tag.
+before merging the release PR. Then, from an updated, clean checkout of
+`main`, publish the release:
+
+```sh
+release-plz release --git-token "$GITHUB_TOKEN"
+```
+
+Provide a GitHub token in `GITHUB_TOKEN` and a crates.io token in
+`CARGO_REGISTRY_TOKEN`. The configuration sets `release_always = false`, so
+publication happens only after merging a release PR. These commands are
+run manually; CI currently validates packages without publishing them.
 
 ## License
 
