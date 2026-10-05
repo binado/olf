@@ -1,6 +1,7 @@
 ---
 name: olf-editing
 description: Etiquette for editing a shared LaTeX paper on Overleaf. Use whenever you edit .tex or .bib files in an olf workspace (a directory with .olf/config.toml) or in an Overleaf git checkout, so your diffs stay small and co-authors' work and style stay intact.
+license: MIT
 ---
 
 # Editing a shared Overleaf paper

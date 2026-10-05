@@ -1,6 +1,7 @@
 ---
 name: olf-build
 description: Compile an Overleaf paper locally and fix LaTeX errors with `olf build`. Use after editing .tex/.bib files in an olf workspace (a directory with .olf/config.toml), when asked whether the paper compiles, or when fixing LaTeX errors or warnings.
+license: MIT
 ---
 
 # Build-fix loop with `olf build`

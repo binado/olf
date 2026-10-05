@@ -1,6 +1,7 @@
 ---
 name: olf-sync
 description: Git sync discipline for Overleaf projects. Use whenever you pull, commit, or push in an olf workspace (a directory with .olf/config.toml) or any git checkout whose origin is git.overleaf.com — co-authors may be editing the same paper in the browser right now.
+license: MIT
 ---
 
 # Syncing an Overleaf project with git
