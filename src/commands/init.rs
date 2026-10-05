@@ -4,7 +4,7 @@ use crate::cli::InitArgs;
 use crate::commands::grant;
 use crate::config::{self, Config, Workspace};
 use crate::error::{OlfError, Result, bail};
-use crate::git::{self, CredentialStatus, HookStatus};
+use crate::git::{self, HookStatus};
 use crate::index::{self, RegisterStatus};
 use crate::overleaf::{self, ProjectId};
 use regex::Regex;
@@ -79,18 +79,7 @@ pub fn run(args: &InitArgs, invocation_dir: &Path) -> Result<()> {
         println!("adopting existing Overleaf clone at {}", checkout.display());
     }
 
-    if let Some(token) = token {
-        match git::store_credential(&checkout, &url, token)? {
-            CredentialStatus::Stored { helper } => {
-                println!("stored token in git credential helper `{helper}`");
-            }
-            CredentialStatus::NoHelper => eprintln!(
-                "warning: no git credential helper configured; git will ask for the token \
-                 on pull/push (set one with `git config --global credential.helper <helper>`)"
-            ),
-            CredentialStatus::NotHttp => {}
-        }
-    }
+    git::use_env_credential(&checkout, &url)?;
 
     let existing_main = existing.as_ref().and_then(|c| c.build.main.clone());
     let main = match (&args.main, existing_main) {

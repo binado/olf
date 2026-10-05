@@ -64,7 +64,7 @@ pub struct InitArgs {
     /// Any overleaf.com project URL
     #[arg(long)]
     pub url: Option<String>,
-    /// Git token (stored in the credential helper, never in config)
+    /// Git token (used for this setup; future Git operations read `OVERLEAF_GIT_TOKEN`)
     #[arg(long, env = "OVERLEAF_GIT_TOKEN", hide_env_values = true)]
     pub token: Option<String>,
     /// Main .tex file, relative to the checkout (skips auto-detection)

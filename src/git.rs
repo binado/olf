@@ -5,7 +5,7 @@
 
 use crate::error::{OlfError, Result};
 use std::fs;
-use std::io::{IsTerminal, Write};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -238,17 +238,18 @@ pub fn install_pre_push_hook(dir: &Path) -> Result<HookStatus> {
     Ok(HookStatus::Installed)
 }
 
-/// One-shot credential helper answering with `$OLF_TOKEN`, so the token never
-/// appears in argv or on disk.
-const INLINE_HELPER: &str = "credential.helper=!f() { test \"$1\" = get && echo username=git && echo \"password=$OLF_TOKEN\"; }; f";
+/// Credential helper answering with `$OVERLEAF_GIT_TOKEN`. The token itself
+/// never appears in argv or on disk.
+const ENV_CREDENTIAL_HELPER: &str = "!f() { test \"$1\" = get && test -n \"$OVERLEAF_GIT_TOKEN\" && echo username=git && echo \"password=$OVERLEAF_GIT_TOKEN\"; }; f";
 
 /// Clone `url` into `dest`, authenticating with `token` if given.
 pub fn clone(cwd: &Path, url: &str, dest: &Path, token: Option<&str>) -> Result<()> {
     let mut cmd = command(cwd);
     if let Some(token) = token {
-        // Reset inherited helpers so the token isn't stored before we decide where.
-        cmd.args(["-c", "credential.helper=", "-c", INLINE_HELPER])
-            .env("OLF_TOKEN", token);
+        // Use only the environment-backed helper for this clone. The token is
+        // passed through the child environment, never argv or persistent config.
+        cmd.args(["-c", "credential.helper=", "-c", ENV_CREDENTIAL_HELPER])
+            .env("OVERLEAF_GIT_TOKEN", token);
     }
     let args = ["clone", "--quiet", "--origin", "origin", url];
     let output = cmd
@@ -260,52 +261,25 @@ pub fn clone(cwd: &Path, url: &str, dest: &Path, token: Option<&str>) -> Result<
     check(&args, &output)
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum CredentialStatus {
-    Stored {
-        helper: String,
-    },
-    /// No helper is configured, so git will prompt on the next pull/push.
-    NoHelper,
-    /// The remote isn't http(s) (e.g. local test remotes); nothing to store.
-    NotHttp,
-}
-
-/// Persist `token` for `url` in the user's credential helper, configuring the
-/// macOS Keychain for this checkout when no helper is set up.
-pub fn store_credential(checkout: &Path, url: &str, token: &str) -> Result<CredentialStatus> {
+/// Configure this checkout to read the token from the environment for future
+/// Git operations. No credential value is persisted.
+pub fn use_env_credential(checkout: &Path, url: &str) -> Result<()> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
-        return Ok(CredentialStatus::NotHttp);
+        return Ok(());
     }
-    let mut helper = run(checkout, &["config", "--get-all", "credential.helper"])
-        .unwrap_or_default()
-        .lines()
-        .rfind(|l| !l.trim().is_empty())
-        .map(str::to_owned);
-    if helper.is_none() && cfg!(target_os = "macos") {
-        set_config(checkout, "credential.helper", "osxkeychain")?;
-        helper = Some("osxkeychain".into());
-    }
-    let Some(helper) = helper else {
-        return Ok(CredentialStatus::NoHelper);
-    };
-
-    let mut child = command(checkout)
-        .args(["credential", "approve"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| spawn_error(&e))?;
-    let input = format!("url={url}\nusername=git\npassword={token}\n\n");
-    child
-        .stdin
-        .take()
-        .expect("stdin is piped")
-        .write_all(input.as_bytes())?;
-    let output = child.wait_with_output()?;
-    check(&["credential", "approve"], &output)?;
-    Ok(CredentialStatus::Stored { helper })
+    // An empty helper resets any inherited global helpers. Store the helper
+    // locally so later `git pull` and `git push` use the current environment.
+    set_config(checkout, "credential.helper", "")?;
+    run(
+        checkout,
+        &[
+            "config",
+            "--add",
+            "credential.helper",
+            ENV_CREDENTIAL_HELPER,
+        ],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -469,11 +443,8 @@ pub mod tests {
     }
 
     #[test]
-    fn store_credential_skips_non_http_remotes() {
+    fn env_credential_skips_non_http_remotes() {
         let tmp = tempfile::tempdir().unwrap();
-        assert_eq!(
-            store_credential(tmp.path(), "/some/local/path", "tok").unwrap(),
-            CredentialStatus::NotHttp
-        );
+        use_env_credential(tmp.path(), "/some/local/path").unwrap();
     }
 }

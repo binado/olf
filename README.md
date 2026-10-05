@@ -33,12 +33,22 @@ preferred because Overleaf uses it) or [tectonic](https://tectonic-typesetting.g
 2. Create a workspace (outside any other git repo):
 
    ```sh
-   export OVERLEAF_GIT_TOKEN=<token>   # or pass --token
+   export OVERLEAF_GIT_TOKEN=<token>   # --token can be used for init only
    olf init --url https://www.overleaf.com/project/<id> ~/papers/dark-matter
    ```
 
-   The token goes into your git credential helper (the Keychain on macOS),
-   never into `.git/config` or olf's config.
+   `olf` does not save the token. The checkout's Git credential helper reads
+   `OVERLEAF_GIT_TOKEN` from the environment when you pull or push. For Claude
+   Code sessions, add the variable to `.claude/settings.local.json` in the
+   directory where you launch Claude:
+
+   ```json
+   {
+     "env": {
+       "OVERLEAF_GIT_TOKEN": "<your-token>"
+     }
+   }
+   ```
 
 3. Install the skills for Claude Code, then work as usual:
 

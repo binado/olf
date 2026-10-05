@@ -25,7 +25,8 @@ pub enum OlfError {
     #[error(
         "Overleaf rejected the git credentials\n{0}\n\
          hint: create a git token under Account Settings → Git Integration on overleaf.com, \
-         then run `olf init --token <token>` (or set OVERLEAF_GIT_TOKEN)"
+         then set OVERLEAF_GIT_TOKEN (for example in Claude's `.claude/settings.local.json` `env`) \
+         and retry, or pass `--token <token>` to init"
     )]
     AuthFailed(String),
 
