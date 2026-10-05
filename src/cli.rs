@@ -20,10 +20,6 @@ pub struct Cli {
     )]
     pub project: Option<String>,
 
-    /// Emit machine-readable JSON instead of human text (supported by `build` and `list`)
-    #[arg(long, global = true)]
-    pub json: bool,
-
     #[command(subcommand)]
     pub command: Command,
 }
@@ -99,6 +95,9 @@ pub enum Agent {
 
 #[derive(Args)]
 pub struct BuildArgs {
+    /// Emit machine-readable JSON instead of human text
+    #[arg(long)]
+    pub json: bool,
     /// Override engine from .olf/config.toml
     #[arg(long, value_enum)]
     pub engine: Option<Engine>,
@@ -109,6 +108,9 @@ pub struct BuildArgs {
 
 #[derive(Args)]
 pub struct ListArgs {
+    /// Emit machine-readable JSON instead of human text
+    #[arg(long)]
+    pub json: bool,
     /// Remove links whose workspace no longer exists
     #[arg(long)]
     pub prune: bool,

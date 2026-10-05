@@ -136,7 +136,7 @@ fn auto_prefers_latexmk_and_keeps_timestamped_logs() {
         .env("PATH", &path)
         .env("LOG", "fine")
         .env("CODE", "0")
-        .args(["--json", "build"])
+        .args(["build", "--json"])
         .assert()
         .success()
         .get_output()
