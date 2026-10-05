@@ -270,7 +270,15 @@ pub fn use_env_credential(checkout: &Path, url: &str) -> Result<()> {
     // An empty helper resets any inherited global helpers. Store the helper
     // locally so later `git pull` and `git push` use the current environment.
     set_config(checkout, "credential.helper", "")?;
-    run(checkout, &["config", "--add", "credential.helper", ENV_CREDENTIAL_HELPER])?;
+    run(
+        checkout,
+        &[
+            "config",
+            "--add",
+            "credential.helper",
+            ENV_CREDENTIAL_HELPER,
+        ],
+    )?;
     Ok(())
 }
 
