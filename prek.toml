@@ -1,0 +1,18 @@
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "fmt"
+name = "Format Rust sources"
+language = "system"
+entry = "just fmt"
+types = ["rust"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "lint"
+name = "Lint Rust sources"
+language = "system"
+entry = "just lint"
+types = ["rust"]
+pass_filenames = false
