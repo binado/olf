@@ -1,6 +1,7 @@
 ---
 name: olf-access
 description: Use when editing an Overleaf paper (an olf workspace with .olf/config.toml, or $OLF_PROJECT_DIR) that lives outside your working directory, and writes to it are blocked or you need to find it.
+license: MIT
 ---
 
 # Reaching a paper outside your working directory
