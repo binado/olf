@@ -15,3 +15,8 @@ lint:
 # Run the test suite.
 test:
     cargo test
+
+# Check a release from a clean checkout without uploading it.
+release-check: fmt-check lint test
+    cargo package --list
+    cargo publish --dry-run --locked

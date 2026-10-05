@@ -3,8 +3,9 @@
 `olf` makes a local git checkout of an [Overleaf](https://www.overleaf.com)
 project safe and convenient for coding agents (and pleasant for humans):
 
-- `olf init` clones the project and configures it so plain `git` can't break
-  Overleaf's rules (a single branch, linear history, no force pushes).
+- `olf init` clones the project, configures pulls to rebase, and installs a
+  pre-push hook to guard Overleaf's single branch and reject non-fast-forward
+  pushes and branch deletion.
 - `olf build` compiles locally into `.olf/build/`, keeping each run's logs
   (timestamped) in `.olf/build/logs/` for the agent to read.
 - `olf list`, `olf path`, `olf edit` and the global `-p <project>` flag
@@ -15,17 +16,21 @@ project safe and convenient for coding agents (and pleasant for humans):
 - `olf grant` / `olf exec` let an agent running in your *code* repo write
   the paper checkout, which lives in a separate workspace.
 
-Day-to-day `git pull` / `commit` / `push` stay plain git. See
-[PLAN.md](PLAN.md) for the full design.
+Day-to-day `git pull` / `commit` / `push` stay plain git. Existing hooks are
+preserved, and Git hooks can be bypassed, so the guard is a convenience rather
+than a guarantee.
 
 ## Install
 
 ```sh
-cargo install --path .
+cargo install olf --locked
 ```
 
 Requirements: `git`, and for `olf build` either `latexmk` (TeX Live / MacTeX,
 preferred because Overleaf uses it) or [tectonic](https://tectonic-typesetting.github.io).
+
+Supported platforms: Linux and macOS. Windows support is experimental and
+has no CI coverage. Building from source requires Rust 1.85 or newer.
 
 ## Quickstart
 
@@ -133,18 +138,70 @@ never overwrites values you edited in `.olf/config.toml`.
 | Code | Meaning |
 |---|---|
 | 0 | success |
-| 1 | generic error / usage |
-| 2 | not inside an olf workspace |
+| 1 | generic error |
+| 2 | not inside an olf workspace, or invalid command-line arguments |
 | 3 | Overleaf rejected the git token |
 | 4 | build failed |
-| 5 | 6 | required tool (git, latexmk, tectonic) missing |
+| 6 | required tool (git, latexmk, tectonic, or an agent) missing |
 | 7 | `init` target is inside a non-Overleaf git repo |
 | 8 | `-p` matched no registered project, or several |
 
+Argument parsing uses Clap's standard exit codes: help and version requests
+return 0, and invalid arguments return 2. `olf exec` returns the launched
+agent's exit status.
+
 ## Development
 
+Install from a local checkout:
+
 ```sh
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings   # pedantic lints are on
-cargo test                                  # the real-TeX test skips without latexmk
+cargo install --path . --locked
 ```
+
+Install [just](https://github.com/casey/just), then run:
+
+```sh
+just fmt
+just fmt-check
+just lint
+just test
+```
+
+Pedantic Clippy lints are enabled. The real-TeX test skips without `latexmk`.
+
+## Releasing
+
+[release-plz](https://release-plz.dev/docs/config) manages the version,
+`Cargo.lock`, changelog, crates.io publication, and GitHub releases using
+`release-plz.toml`. Tags and GitHub releases use `v<version>`.
+
+From a clean checkout of `main`, open a release PR:
+
+```sh
+release-plz release-pr --git-token "$GITHUB_TOKEN"
+```
+
+Review the generated version and changelog, and run these checks on the
+release PR branch:
+
+```sh
+just release-check
+```
+
+This runs formatting, linting, and tests, lists the packaged files, and runs
+`cargo publish --dry-run`. Review the file list and resolve any warnings
+before merging the release PR. Then, from an updated, clean checkout of
+`main`, publish the release:
+
+```sh
+release-plz release --git-token "$GITHUB_TOKEN"
+```
+
+Provide a GitHub token in `GITHUB_TOKEN` and a crates.io token in
+`CARGO_REGISTRY_TOKEN`. The configuration sets `release_always = false`, so
+publication happens only after merging a release PR. These commands are
+run manually; CI currently validates packages without publishing them.
+
+## License
+
+Licensed under the [MIT license](https://github.com/binado/olf/blob/main/LICENSE-MIT).
