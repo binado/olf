@@ -134,8 +134,10 @@ One command to create or repair a workspace, cloning if needed:
 
 Setup steps:
 
-- Token from `--token` or `OVERLEAF_GIT_TOKEN`; stored via a git credential
-  helper (Keychain on macOS), not embedded in `.git/config`.
+- Token from `--token` or `OVERLEAF_GIT_TOKEN` for cloning. The checkout gets
+  a Git credential helper that reads `OVERLEAF_GIT_TOKEN` for later operations;
+  the token itself is never saved. Claude Code users can set the variable in
+  `.claude/settings.local.json` under `env`.
 - Write `.olf/config.toml`, auto-detecting the main file: prefer a root
   `main.tex`; else the single `.tex` file in any folder with `\documentclass`
   (ignoring `standalone` / `subfiles` classes), or the single such file named
@@ -300,7 +302,7 @@ pub struct InitArgs {
     /// Any overleaf.com project URL
     #[arg(long)]
     pub url: Option<String>,
-    /// Git token (stored in the credential helper, never in config)
+    /// Git token (used for this setup; future Git operations read OVERLEAF_GIT_TOKEN)
     #[arg(long, env = "OVERLEAF_GIT_TOKEN", hide_env_values = true)]
     pub token: Option<String>,
     /// Also grant these agents access from the cwd's repo
@@ -417,8 +419,8 @@ pub enum Exit {
 ### Implementation notes
 
 - Shell out to the `git` binary rather than using `git2`: libgit2 does not
-  run git's credential helpers or hooks the same way, and both the Keychain
-  token storage and the pre-push guard depend on them.
+  run git's credential helpers or hooks the same way, and both the
+  environment-backed token helper and the pre-push guard depend on them.
 - Skills are embedded in the binary with `include_str!`.
 
 ### Crate layout
@@ -473,8 +475,8 @@ or `thiserror`, `which`, `open`.
 
 ## Validation spike (before writing code)
 
-- Clone and push with a token on a free account; check how the credential
-  helper stores the token for `git.overleaf.com`.
+- Clone and push with a token on a free account; verify the environment-backed
+  helper authenticates without persisting the token.
 - Edit in the browser, then push locally: capture the exact rejection and
   conflict output to check the skills and tests against.
 - Revoke the token and capture the auth-failure output (for `AuthFailed`).
