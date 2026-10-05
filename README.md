@@ -120,9 +120,6 @@ One workspace per project ID per machine: initialising the same project
 elsewhere fails unless you pass `olf init --force`, which relinks the index.
 Use `-C <dir>` instead when you have a directory rather than a project.
 
-**Upgrading from v0.1:** workspaces created by v0.1 aren't in the index yet;
-re-run `olf init` in each one to register it.
-
 ## Workspace layout
 
 ```
