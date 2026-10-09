@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -407,8 +408,34 @@ def detect_main(checkout: Path) -> str:
 # --- command ----------------------------------------------------------------------------
 
 
+def default_target(args: argparse.Namespace) -> Path:
+    """Where to set up when no path is given.
+
+    The current directory if it already is (or is inside) a workspace or is the root of an
+    Overleaf clone, so re-running repairs it; otherwise ``<tmp>/olf-<project id>``, which is
+    stable per project so re-runs find it.
+    """
+    cwd = Path.cwd()
+    if find_root(cwd):
+        return cwd
+    if inside_work_tree(cwd):
+        top = toplevel(cwd)
+        if same_path(top, cwd) and id_from_remote(origin_url(top) or ""):
+            return cwd
+    if args.id:
+        project_id = parse_id(args.id)
+    elif args.url:
+        project_id = id_from_url(args.url)
+    else:
+        raise OlfError(
+            "no Overleaf project given\n"
+            "hint: pass --url <overleaf-project-url> or --id <project-id>"
+        )
+    return Path(tempfile.gettempdir()).resolve() / f"olf-{project_id}"
+
+
 def run(args) -> None:
-    target = Path(os.path.abspath(Path.cwd() / (args.path or ".")))
+    target = default_target(args) if args.path is None else Path(os.path.abspath(args.path))
     # Re-running from inside a workspace (e.g. its checkout) repairs that workspace.
     target = find_root(target) or target
 
@@ -483,7 +510,12 @@ def main() -> None:
         "(also the default for this flag)",
     )
     parser.add_argument("--main", help="main .tex file, relative to the checkout")
-    parser.add_argument("path", nargs="?", help="workspace directory (default: cwd)")
+    parser.add_argument(
+        "path",
+        nargs="?",
+        help="workspace directory (default: the cwd if it is already a workspace or an "
+        "Overleaf clone, else a temporary directory, olf-<id> under $TMPDIR)",
+    )
     try:
         run(parser.parse_args())
     except OlfError as e:

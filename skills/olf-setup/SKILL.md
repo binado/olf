@@ -22,7 +22,7 @@ refused (exit 7). Flags:
 | `--url URL` / `--id ID` | the project: any `overleaf.com/project/<id>` or `git.overleaf.com/<id>` URL, or the 24-hex ID. Share links (`/read/…`, `/edit/…`) don't contain the ID and are rejected |
 | `--token TOKEN` | git token for the clone; defaults to `$OVERLEAF_GIT_TOKEN` |
 | `--main FILE` | main `.tex` file relative to the checkout (otherwise `main.tex`, else the only file with `\documentclass`) |
-| `[path]` | workspace directory (default: cwd) |
+| `[path]` | workspace directory. Default: the cwd if it is already a workspace or an Overleaf clone (re-run = repair), otherwise a temporary directory `olf-<id>` under `$TMPDIR` (stable per project, but lost on reboot: pass a path for a lasting workspace). The workspace path is printed at the end |
 
 ## What it does
 

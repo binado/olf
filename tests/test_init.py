@@ -376,3 +376,35 @@ def test_auth_failure_exits_3(env):
     result = env.init("--id", ID, "ws")
     assert result.returncode == 3
     assert "OVERLEAF_GIT_TOKEN" in result.stderr
+
+
+def test_defaults_to_a_temp_dir_stable_per_project(env):
+    env.remote(ID, {"main.tex": MAIN_TEX})
+    tmp = env.path / "tmpdir"
+    tmp.mkdir()
+    cwd = env.path / "elsewhere"
+    cwd.mkdir()
+    result = env.init("--id", ID, cwd=cwd, TMPDIR=str(tmp))
+    assert result.returncode == 0, result.stderr
+    ws = tmp / f"olf-{ID}"
+    assert (ws / "paper/main.tex").is_file()
+    assert str(ws) in result.stdout
+    assert not (cwd / ".olf").exists()
+
+    again = env.init("--id", ID, cwd=cwd, TMPDIR=str(tmp))
+    assert again.returncode == 0 and "cloned" not in again.stdout
+
+
+def test_default_inside_plain_repo_uses_temp_dir(env):
+    env.remote(ID, {"main.tex": MAIN_TEX})
+    code = env.code_repo()
+    tmp = env.path / "tmpdir"
+    tmp.mkdir()
+    result = env.init("--id", ID, cwd=code, TMPDIR=str(tmp))
+    assert result.returncode == 0, result.stderr
+    assert (tmp / f"olf-{ID}/.olf/config.toml").is_file()
+
+
+def test_default_without_project_is_an_error(env):
+    result = env.init(cwd=env.path)
+    assert result.returncode == 1 and "--url" in result.stderr

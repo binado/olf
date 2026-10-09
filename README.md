@@ -62,6 +62,9 @@ either `latexmk` (TeX Live / MacTeX, preferred because Overleaf uses it) or
    open https://www.overleaf.com/project/<id>   # the project on overleaf.com
    ```
 
+Without a path, `init.py` uses a temporary directory (`olf-<id>` under
+`$TMPDIR`); pass one for a workspace that outlives a reboot.
+
 Already have an Overleaf clone? Run `init.py` inside it to adopt it as the
 workspace.
 

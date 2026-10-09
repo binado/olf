@@ -6,7 +6,9 @@
   each bundling the small stdlib-only Python scripts it needs (run with
   `uv run`, or `python3`): `olf-setup/scripts/init.py`,
   `olf-build/scripts/build.py`, `olf-access/scripts/grant.py`.
-- Add the `olf-setup` skill (clone/adopt/repair a workspace).
+- Add the `olf-setup` skill (clone/adopt/repair a workspace). Without a path,
+  `init.py` uses a temporary directory `olf-<id>` unless the cwd is already a
+  workspace or Overleaf clone.
 - Remove the project registry (`olf list`, `-p`, `~/.olf/projects`),
   `olf path`, `olf edit`, `olf open` and `olf exec`. Use `--workspace <dir>`,
   `$OLF_PROJECT_DIR` (set by `grant.py`), `open https://www.overleaf.com/project/<id>`
