@@ -248,7 +248,9 @@ pub fn clone(cwd: &Path, url: &str, dest: &Path, token: Option<&str>) -> Result<
     if let Some(token) = token {
         // Use only the environment-backed helper for this clone. The token is
         // passed through the child environment, never argv or persistent config.
-        cmd.args(["-c", "credential.helper=", "-c", ENV_CREDENTIAL_HELPER])
+        cmd.args(["-c", "credential.helper="])
+            .arg("-c")
+            .arg(format!("credential.helper={ENV_CREDENTIAL_HELPER}"))
             .env("OVERLEAF_GIT_TOKEN", token);
     }
     let args = ["clone", "--quiet", "--origin", "origin", url];
