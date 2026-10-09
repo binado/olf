@@ -17,7 +17,7 @@ Overleaf's git bridge is not GitHub:
 - Co-authors edit the same files in the browser, often at the same moment.
 - Every file you push appears in the Overleaf project tree for everyone.
 
-`olf init` already set `pull.rebase=true` (plus `pull.ff=true`, so a global
+olf-setup's `init.py` already set `pull.rebase=true` (plus `pull.ff=true`, so a global
 `pull.ff=only` can't block the rebase) and a pre-push hook that rejects
 force pushes, deletions and pushes to any other branch. The hook is a safety net,
 not permission to try those things.
@@ -34,8 +34,8 @@ not permission to try those things.
 4. **Push rejected** (`rejected`, `fetch first`, `non-fast-forward`): someone
    pushed or edited in the browser. Run `git pull`, then push again. Never
    reach for `--force` or `--no-verify`. If `git pull` says `Not possible to
-   fast-forward`, the checkout's config is incomplete: run `olf init` (it
-   repairs the setup) and pull again; don't merge instead.
+   fast-forward`, the checkout's config is incomplete: re-run olf-setup's `init.py`
+   (it repairs the setup) and pull again; don't merge instead.
 5. **Rebase conflict during pull: stop.** Don't resolve co-authors' text on
    your own. Do this:
    - list the files: `git -C paper diff --name-only --diff-filter=U`
@@ -47,19 +47,22 @@ not permission to try those things.
 6. **Never** force push, create or push other branches or tags, amend or
    rebase commits that are already pushed, or rewrite history.
 7. **Only commit paper files.** No build outputs (`*.aux`, `*.log`, PDFs from
-   `olf build` live in `.olf/build/` anyway), scratch notes, or agent files.
+   `build.py` live in `.olf/build/` anyway), scratch notes, or agent files.
    Check `git status` before committing and stage files by name.
 8. **Authentication failure** (`Authentication failed`, HTTP 401/403, or
    `could not read Username`): the Overleaf git token is missing, expired or
    revoked. Don't retry in a loop, and never ask for the token in chat. Ask
    the user to create a token on overleaf.com (Account Settings → Git
-   Integration) and run `olf init --token <token>` themselves.
+   Integration) and make it available as `OVERLEAF_GIT_TOKEN` (git reads it
+   through the checkout's credential helper; for Claude Code, in the `env` of
+   `.claude/settings.local.json`), or re-run olf-setup's `init.py --token
+   <token>` themselves.
 
 ## A typical round
 
 ```sh
 git -C paper pull
-# ... edit, then `olf build` to check it compiles ...
+# ... edit, then run build.py (olf-build skill) to check it compiles ...
 git -C paper status
 git -C paper add sections/results.tex
 git -C paper commit -m "Tighten results discussion"

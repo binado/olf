@@ -1,20 +1,17 @@
 # olf — Overleaf projects for agents
 
-`olf` makes a local git checkout of an [Overleaf](https://www.overleaf.com)
-project safe and convenient for coding agents (and pleasant for humans):
+`olf` is a set of [Agent Skills](https://agentskills.io) that make a local git
+checkout of an [Overleaf](https://www.overleaf.com) project safe and
+convenient for coding agents (and pleasant for humans). Each skill bundles the
+small helper script it needs; there is nothing to compile or put on `PATH`.
 
-- `olf init` clones the project, configures pulls to rebase, and installs a
-  pre-push hook to guard Overleaf's single branch and reject non-fast-forward
-  pushes and branch deletion.
-- `olf build` compiles locally into `.olf/build/`, keeping each run's logs
-  (timestamped) in `.olf/build/logs/` for the agent to read.
-- `olf list`, `olf path`, `olf edit` and the global `-p <project>` flag
-  find your papers from anywhere.
-- Agent skills in `skills/` teach the workflow:
-  sync discipline with co-authors editing in the browser, editing manners,
-  a build-fix loop, and what to do when the paper is outside the sandbox.
-- `olf grant` / `olf exec` let an agent running in your *code* repo write
-  the paper checkout, which lives in a separate workspace.
+| Skill | What it teaches / ships |
+|---|---|
+| `olf-setup` | `scripts/init.py`: clone or adopt a project, rebase-on-pull, a pre-push hook guarding Overleaf's single branch, token handling |
+| `olf-build` | `scripts/build.py`: compile locally with latexmk/tectonic into `.olf/build/`, keeping each run's timestamped logs; a build-fix loop |
+| `olf-access` | `scripts/grant.py`: let an agent running in your *code* repo write the paper checkout |
+| `olf-sync` | git discipline with co-authors editing in the browser |
+| `olf-editing` | editing manners: small diffs, stable labels, no reformatting |
 
 Day-to-day `git pull` / `commit` / `push` stay plain git. Existing hooks are
 preserved, and Git hooks can be bypassed, so the guard is a convenience rather
@@ -23,116 +20,80 @@ than a guarantee.
 ## Install
 
 ```sh
-cargo install olf --locked
+npx skills add binado/olf -g   # install globally for your agents
 ```
 
-Requirements: `git`, and for `olf build` either `latexmk` (TeX Live / MacTeX,
-preferred because Overleaf uses it) or [tectonic](https://tectonic-typesetting.github.io).
+The [skills CLI](https://github.com/vercel-labs/skills) lets you choose which
+agents to install for; omit `-g` to install into the current project.
 
-Supported platforms: Linux and macOS. Windows support is experimental and
-has no CI coverage. Building from source requires Rust 1.85 or newer.
+Requirements: [`uv`](https://docs.astral.sh/uv/) (the scripts are stdlib-only
+Python >= 3.11, so `python3 script.py` works too), `git`, and for building
+either `latexmk` (TeX Live / MacTeX, preferred because Overleaf uses it) or
+[tectonic](https://tectonic-typesetting.github.io). Linux and macOS only.
 
 ## Quickstart
 
 1. On overleaf.com, create a git token: Account Settings → Git Integration.
-2. Create a workspace (outside any other git repo):
+2. Create a workspace (outside any other git repo), or ask your agent to
+   "set up this Overleaf project" with the `olf-setup` skill:
 
    ```sh
-   export OVERLEAF_GIT_TOKEN=<token>   # --token can be used for init only
-   olf init --url https://www.overleaf.com/project/<id> ~/papers/dark-matter
+   export OVERLEAF_GIT_TOKEN=<token>   # --token can be used for init.py only
+   uv run ~/.agents/skills/olf-setup/scripts/init.py \
+     --url https://www.overleaf.com/project/<id> ~/papers/dark-matter
    ```
 
-   `olf` does not save the token. The checkout's Git credential helper reads
+   (The skills CLI reports where it installed the skills; adjust the path.)
+   The token is not saved. The checkout's Git credential helper reads
    `OVERLEAF_GIT_TOKEN` from the environment when you pull or push. For Claude
    Code sessions, add the variable to `.claude/settings.local.json` in the
    directory where you launch Claude:
 
    ```json
-   {
-     "env": {
-       "OVERLEAF_GIT_TOKEN": "<your-token>"
-     }
-   }
+   { "env": { "OVERLEAF_GIT_TOKEN": "<your-token>" } }
    ```
 
-3. Install the skills, then work as usual:
+3. Work as usual:
 
    ```sh
-   npx skills add binado/olf -g  # install globally for your agents
    cd ~/papers/dark-matter
-   olf build                    # PDF in .olf/build/
+   uv run <skills>/olf-build/scripts/build.py   # PDF in .olf/build/
    git -C paper pull && git -C paper push
-   olf open                     # the project on overleaf.com
+   open https://www.overleaf.com/project/<id>   # the project on overleaf.com
    ```
 
-   The skills are plain [Agent Skills](https://agentskills.io)
-   (`skills/<name>/SKILL.md` in this repo). The [skills CLI](https://github.com/vercel-labs/skills)
-   lets you choose which agents to install them for; omit `-g` to install
-   into the current project instead.
-
-Already have an Overleaf clone? `olf init` inside it adopts it as the
+Already have an Overleaf clone? Run `init.py` inside it to adopt it as the
 workspace.
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `olf init` | clone/adopt a project, configure it, register it in the index |
-| `olf build [--json]` | compile locally into `.olf/build/` (`--json` for machine output) |
-| `olf list [--json] [--prune]` | registered projects: ID, path, link status (`--json`); `--prune` removes links to deleted workspaces |
-| `olf path` | print the checkout directory |
-| `olf edit` | open the checkout in `$VISUAL`, else `$EDITOR` |
-| `olf grant <agent> [--repo <dir>]` | persistently allow an agent in a repo to write the checkout (`claude`) |
-| `olf exec -- <agent> [args...]` | launch an agent with checkout access for one session |
-| `olf open [--print]` | the project on overleaf.com |
-
-### Working on any project from anywhere
-
-`olf init` registers each workspace as a symlink in `~/.olf/projects/<id>`
-(set `OLF_HOME` to use `$OLF_HOME/projects` instead). The global `-p` flag
-accepts a full project ID, a unique ID prefix, or the workspace directory
-name, and runs the command in that workspace:
-
-```sh
-olf -p dark build
-olf -p 64f0c0 path
-```
 
 ### Working on code and paper together
 
-When the paper lives in its own workspace, an agent started in your code
-repo can't write it (the sandbox only allows its working directory). Either:
+When the paper lives in its own workspace, an agent started in your code repo
+can't write it (the sandbox only allows its working directory). Either:
 
 ```sh
 cd ~/code/my-analysis
-olf -p dark grant claude        # persistent: edits .claude/settings.local.json
-olf -p dark exec -- claude      # one session: passes --add-dir <checkout>
-olf init --url <url> ../paper-ws --grant claude   # set up and grant at once
+uv run <skills>/olf-access/scripts/grant.py --workspace ~/papers/dark-matter  # persistent
+claude --add-dir "$OLF_PROJECT_DIR"   # or: one session only, with the checkout path
 ```
 
-`grant` adds the checkout to `permissions.additionalDirectories` in the
-repo's `.claude/settings.local.json` and keeps that file out of git via
-`.git/info/exclude`. `exec` also sets `OLF_WORKSPACE` and `OLF_PROJECT_DIR`,
-and runs the agent in your current directory. Run `grant` yourself: under the
+`grant.py` adds the checkout to `permissions.additionalDirectories` and sets
+`env.OLF_PROJECT_DIR` in the repo's `.claude/settings.local.json`, and keeps
+that file out of git via `.git/info/exclude`. Run it yourself: under the
 sandbox an agent cannot edit its own `.claude` settings, which is intended.
-
-One workspace per project ID per machine: initialising the same project
-elsewhere fails unless you pass `olf init --force`, which relinks the index.
-Use `-C <dir>` instead when you have a directory rather than a project.
 
 ## Workspace layout
 
 ```
 ~/papers/dark-matter/   # workspace
   .olf/
-    config.toml         # project_id, project_dir, [build], [fmt]
+    config.toml         # project_id, project_dir, [build] main/compiler/engine
     build/              # build output, never inside the checkout
   paper/                # the Overleaf git checkout
 ```
 
-`olf` commands work from the workspace root or anywhere inside it; `-C <dir>`
-runs as if started in `<dir>`. Re-running `olf init` repairs the setup and
-never overwrites values you edited in `.olf/config.toml`.
+The scripts find the workspace by walking up from `--workspace <dir>`, else the
+current directory, else `$OLF_PROJECT_DIR`. Re-running `init.py` repairs the
+setup and never overwrites values you edited in `.olf/config.toml`.
 
 ## Exit codes
 
@@ -141,67 +102,39 @@ never overwrites values you edited in `.olf/config.toml`.
 | 0 | success |
 | 1 | generic error |
 | 2 | not inside an olf workspace, or invalid command-line arguments |
-| 3 | Overleaf rejected the git token |
-| 4 | build failed |
-| 6 | required tool (git, latexmk, tectonic, or an agent) missing |
-| 7 | `init` target is inside a non-Overleaf git repo |
-| 8 | `-p` matched no registered project, or several |
+| 3 | Overleaf rejected the git token (`init.py`) |
+| 4 | build failed (`build.py`) |
+| 6 | required tool (git, latexmk, tectonic) missing |
+| 7 | `init.py` target is inside a non-Overleaf git repo |
 
-Argument parsing uses Clap's standard exit codes: help and version requests
-return 0, and invalid arguments return 2. `olf exec` returns the launched
-agent's exit status.
+## Migrating from the 0.3 CLI
+
+| Before | Now |
+|---|---|
+| `olf init …` | `uv run <olf-setup>/scripts/init.py …` (`--force`, `--grant` removed) |
+| `olf build [--json]` | `uv run <olf-build>/scripts/build.py [--json]` |
+| `olf grant claude` | `uv run <olf-access>/scripts/grant.py` (also sets `OLF_PROJECT_DIR`) |
+| `olf exec -- claude` | `claude --add-dir "$OLF_PROJECT_DIR"` |
+| `olf path` | `$OLF_PROJECT_DIR` |
+| `olf open` | `open https://www.overleaf.com/project/<id>` |
+| `olf list`, `-p`, `olf edit` | removed (no project registry); use `--workspace <dir>` |
+
+Existing workspaces keep working. The old `~/.olf/projects` symlinks are inert
+and can be deleted.
 
 ## Development
 
-Install from a local checkout:
-
 ```sh
-cargo install --path . --locked
-```
-
-Install [just](https://github.com/casey/just), then run:
-
-```sh
-just fmt
+just fmt        # ruff format
 just fmt-check
-just lint
-just test
+just lint       # ruff check + ty
+just test       # pytest (the real-TeX test skips without latexmk)
 ```
 
-Pedantic Clippy lints are enabled. The real-TeX test skips without `latexmk`.
-
-## Releasing
-
-[release-plz](https://release-plz.dev/docs/config) manages the version,
-`Cargo.lock`, changelog, crates.io publication, and GitHub releases using
-`release-plz.toml`. Tags and GitHub releases use `v<version>`.
-
-From a clean checkout of `main`, open a release PR:
-
-```sh
-release-plz release-pr --git-token "$GITHUB_TOKEN"
-```
-
-Review the generated version and changelog, and run these checks on the
-release PR branch:
-
-```sh
-just release-check
-```
-
-This runs formatting, linting, and tests, lists the packaged files, and runs
-`cargo publish --dry-run`. Review the file list and resolve any warnings
-before merging the release PR. Then, from an updated, clean checkout of
-`main`, publish the release:
-
-```sh
-release-plz release --git-token "$GITHUB_TOKEN"
-```
-
-Provide a GitHub token in `GITHUB_TOKEN` and a crates.io token in
-`CARGO_REGISTRY_TOKEN`. The configuration sets `release_always = false`, so
-publication happens only after merging a release PR. These commands are
-run manually; CI currently validates packages without publishing them.
+Install [just](https://github.com/casey/just) and [uv](https://docs.astral.sh/uv/).
+Skills must stay self-contained (installers copy one skill directory), so
+small helpers such as workspace discovery are intentionally duplicated per
+script instead of shared.
 
 ## License
 

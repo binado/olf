@@ -1,27 +1,30 @@
 ---
 name: olf-build
-description: Compile an Overleaf paper locally and fix LaTeX errors with `olf build`. Use after editing .tex/.bib files in an olf workspace (a directory with .olf/config.toml), when asked whether the paper compiles, or when fixing LaTeX errors or warnings.
+description: Compile an Overleaf paper locally and fix LaTeX errors with `build.py`. Use after editing .tex/.bib files in an olf workspace (a directory with .olf/config.toml), when asked whether the paper compiles, or when fixing LaTeX errors or warnings.
 license: MIT
 ---
 
-# Build-fix loop with `olf build`
+# Build-fix loop with `build.py`
 
-`olf build` compiles the paper locally (latexmk, or tectonic as a fallback)
-into `.olf/build/`, never into the checkout. It works from anywhere inside the
-workspace, or from elsewhere with `olf -C <workspace> build` or
-`olf -p <project> build` (`-p` takes a project ID, a unique ID prefix or the
-workspace directory name; `olf list` shows what is registered, and
-`olf path` prints the checkout directory).
+`scripts/build.py` (next to this file) compiles the paper locally (latexmk, or
+tectonic as a fallback) into `.olf/build/`, never into the checkout:
+
+```sh
+uv run <this-skill-dir>/scripts/build.py [--json] [--engine auto|latexmk|tectonic] [--main FILE]
+```
+
+It works from anywhere inside the workspace. From elsewhere, pass
+`--workspace <dir>` or rely on `$OLF_PROJECT_DIR` (see the olf-access skill).
+It is stdlib-only Python (>= 3.11): `python3 build.py` works without `uv`.
 
 | Exit code | Meaning |
 |---|---|
 | 0 | built; PDF path printed |
-| 2 | not inside an olf workspace |
+| 2 | not inside an olf workspace (create one with olf-setup's `init.py`) |
 | 4 | the build failed; read the logs (below) |
 | 6 | no latexmk/tectonic installed: tell the user, don't try to install TeX yourself |
-| 8 | `-p` matched no registered project, or several |
 
-`olf build` doesn't summarize errors. It prints where this run's logs are:
+`build.py` doesn't summarize errors. It prints where this run's logs are:
 
 ```
 log: <workspace>/.olf/build/logs/2026-10-04T15-30-12Z-main.log
@@ -34,7 +37,7 @@ engine output: <workspace>/.olf/build/logs/2026-10-04T15-30-12Z-main.out
 - Each build gets its own timestamped pair (UTC, sortable), and the last 20
   builds are kept. Compare the newest log with an earlier one to see what
   your change introduced.
-- `olf build --json` prints `{ ok, engine, pdf, log, output }` instead.
+- `build.py --json` prints `{ ok, engine, pdf, log, output }` instead.
 
 ## Reading a TeX log
 
@@ -60,7 +63,7 @@ grep -n -A2 -E '^[^ ]+:[0-9]+: |^! ' <log>   # errors with their l.<n> line
 
 ## Loop
 
-1. Run `olf build`.
+1. Run `build.py`.
 2. On exit 4, find the **first** error in the log and fix it; later errors are
    often consequences of it.
 3. Rebuild and repeat.

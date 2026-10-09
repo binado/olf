@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0
+
+- **Breaking:** the `olf` CLI is removed. The repo now ships only Agent Skills,
+  each bundling the small stdlib-only Python scripts it needs (run with
+  `uv run`, or `python3`): `olf-setup/scripts/init.py`,
+  `olf-build/scripts/build.py`, `olf-access/scripts/grant.py`.
+- Add the `olf-setup` skill (clone/adopt/repair a workspace).
+- Remove the project registry (`olf list`, `-p`, `~/.olf/projects`),
+  `olf path`, `olf edit`, `olf open` and `olf exec`. Use `--workspace <dir>`,
+  `$OLF_PROJECT_DIR` (set by `grant.py`), `open https://www.overleaf.com/project/<id>`
+  and `claude --add-dir "$OLF_PROJECT_DIR"` instead.
+- Existing 0.3 workspaces keep working: same `.olf/config.toml` and pre-push hook.
+- Drop the unused `[fmt]` config section.
+
 ## 0.3.0
 
 - Add `olf grant claude` to grant persistent checkout access from a code repo.

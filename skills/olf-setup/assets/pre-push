@@ -1,0 +1,46 @@
+#!/bin/sh
+# olf-managed: pre-push guard for the Overleaf git bridge.
+# Re-run olf-setup's init.py to update it. Bypass (not recommended): git push --no-verify
+#
+# The bridge has a single branch (the remote's HEAD, e.g. `main` or
+# `master`) and linear history, so reject pushes to
+# other refs, deletions, and non-fast-forward (force) pushes.
+
+remote="$1"
+branch=$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null)
+branch=${branch#"$remote"/}
+allowed=${branch:+refs/heads/$branch}
+# Pushing by URL or without a known remote HEAD: accept either default name.
+allowed=${allowed:-refs/heads/main refs/heads/master}
+
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  ok=
+  for ref in $allowed; do
+    [ "$remote_ref" = "$ref" ] && ok=1
+  done
+  if [ -z "$ok" ]; then
+    echo "olf: refusing to push to $remote_ref: this Overleaf project only has $allowed" >&2
+    echo "olf: pull, then push that branch with plain \`git push\`" >&2
+    status=1
+    continue
+  fi
+  case "$local_sha" in
+    *[!0]*) ;;
+    *)
+      echo "olf: refusing to delete $remote_ref on Overleaf" >&2
+      status=1
+      continue
+      ;;
+  esac
+  case "$remote_sha" in
+    *[!0]*) ;;
+    *) continue ;; # new ref on the remote: nothing to overwrite
+  esac
+  if ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+    echo "olf: refusing non-fast-forward push to $remote_ref (would overwrite co-authors' work)" >&2
+    echo "olf: run \`git pull\` (rebases onto Overleaf) and push again" >&2
+    status=1
+  fi
+done
+exit $status
