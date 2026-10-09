@@ -1,22 +1,18 @@
 set shell := ["sh", "-cu"]
 
-# Format the Rust source.
+# Format the Python sources.
 fmt:
-    cargo fmt
+    uvx ruff format
 
 # Check formatting as CI does.
 fmt-check:
-    cargo fmt --check
+    uvx ruff format --check
 
 # Run the CI linter.
 lint:
-    cargo clippy --all-targets -- -D warnings
+    uvx ruff check
+    uvx --with pytest ty check
 
 # Run the test suite.
 test:
-    cargo test
-
-# Check a release from a clean checkout without uploading it.
-release-check: fmt-check lint test
-    cargo package --list
-    cargo publish --dry-run --locked
+    uv run --no-project --with pytest pytest

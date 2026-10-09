@@ -39,11 +39,11 @@ the olf-access skill.
 - Add new sections or figures as files only when the project already splits
   content that way; follow its directory layout (`sections/`, `figures/`, …).
 - Keep the main file and Overleaf's project settings (compiler, main
-  document) as they are; olf mirrors them in `.olf/config.toml`.
+  document) as they are; `.olf/config.toml` mirrors them.
 
 ## Before committing
 
-- Run `olf build` and make sure you didn't introduce errors or new warnings
+- Run olf-build's `build.py` and make sure you didn't introduce errors or new warnings
   (see the olf-build skill).
 - Review `git diff`: if it shows changes you didn't intend (whitespace,
   re-wrapped lines), revert those hunks.

@@ -3,16 +3,16 @@ repo = "local"
 
 [[repos.hooks]]
 id = "fmt"
-name = "Format Rust sources"
+name = "Format Python sources"
 language = "system"
 entry = "just fmt"
-types = ["rust"]
+types = ["python"]
 pass_filenames = false
 
 [[repos.hooks]]
 id = "lint"
-name = "Lint Rust sources"
+name = "Lint Python sources"
 language = "system"
 entry = "just lint"
-types = ["rust"]
+types = ["python"]
 pass_filenames = false
