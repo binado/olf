@@ -110,21 +110,6 @@ setup and never overwrites values you edited in `.olf/config.toml`.
 | 6 | required tool (git, latexmk, tectonic) missing |
 | 7 | `init.py` target is inside a non-Overleaf git repo |
 
-## Migrating from the 0.3 CLI
-
-| Before | Now |
-|---|---|
-| `olf init …` | `uv run <olf-setup>/scripts/init.py …` (`--force`, `--grant` removed) |
-| `olf build [--json]` | `uv run <olf-build>/scripts/build.py [--json]` |
-| `olf grant claude` | `uv run <olf-access>/scripts/grant.py` (also sets `OLF_PROJECT_DIR`) |
-| `olf exec -- claude` | `claude --add-dir "$OLF_PROJECT_DIR"` |
-| `olf path` | `$OLF_PROJECT_DIR` |
-| `olf open` | `open https://www.overleaf.com/project/<id>` |
-| `olf list`, `-p`, `olf edit` | removed (no project registry); use `--workspace <dir>` |
-
-Existing workspaces keep working. The old `~/.olf/projects` symlinks are inert
-and can be deleted.
-
 ## Development
 
 ```sh
