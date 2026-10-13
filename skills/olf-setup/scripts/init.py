@@ -17,7 +17,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import tomllib
 from pathlib import Path
 
@@ -263,10 +262,54 @@ def id_from_remote(url: str) -> str | None:
 
 
 def find_root(start: Path) -> Path | None:
+    start = start.resolve()
     for directory in (start, *start.parents):
         if (directory / ".olf" / "config.toml").is_file():
             return directory
     return None
+
+
+def linked_root(start: Path, project_id: str | None) -> Path | None:
+    """Find a local checkout link; require a project when several are present."""
+    for directory in (start, *start.parents):
+        links = directory / ".olf"
+        candidates = [links / project_id] if project_id else sorted(links.glob("*"))
+        roots = {
+            root
+            for link in candidates
+            if re.fullmatch(r"[0-9a-f]{24}", link.name) and link.is_symlink()
+            if (root := find_root(link)) is not None
+        }
+        if len(roots) > 1:
+            raise OlfError("multiple linked papers; pass --id, --url, or a workspace path")
+        if roots:
+            return roots.pop()
+    return None
+
+
+def add_symlink(checkout: Path, project_id: str) -> None:
+    """Link the checkout from the invocation directory without replacing other paths."""
+    link = Path.cwd() / ".olf" / project_id
+    wanted = checkout.resolve()
+    if not (link.is_symlink() and link.resolve() == wanted):
+        if link.exists() or link.is_symlink():
+            raise OlfError(f"cannot create {link}: path already exists; left it alone")
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(wanted, target_is_directory=True)
+        print(f"linked {link} -> {wanted}")
+    if inside_work_tree(Path.cwd()):
+        repo = toplevel(Path.cwd())
+        pattern = f"/{link.relative_to(repo)}"
+        exclude = git_path(repo, "info/exclude")
+        existing = exclude.read_text() if exclude.exists() else ""
+        if pattern not in existing.splitlines():
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            exclude.write_text(
+                existing
+                + ("\n" if existing and not existing.endswith("\n") else "")
+                + pattern
+                + "\n"
+            )
 
 
 def load_config(path: Path) -> dict:
@@ -412,26 +455,25 @@ def default_target(args: argparse.Namespace) -> Path:
     """Where to set up when no path is given.
 
     The current directory if it already is (or is inside) a workspace or is the root of an
-    Overleaf clone, so re-running repairs it; otherwise ``<tmp>/olf-<project id>``, which is
-    stable per project so re-runs find it.
+    Overleaf clone, or a locally linked workspace; otherwise ``$HOME/.olf/<project id>``.
     """
     cwd = Path.cwd()
     if find_root(cwd):
         return cwd
+    project_id = parse_id(args.id) if args.id else id_from_url(args.url) if args.url else None
+    linked = linked_root(cwd, project_id)
+    if linked:
+        return linked
     if inside_work_tree(cwd):
         top = toplevel(cwd)
         if same_path(top, cwd) and id_from_remote(origin_url(top) or ""):
             return cwd
-    if args.id:
-        project_id = parse_id(args.id)
-    elif args.url:
-        project_id = id_from_url(args.url)
-    else:
+    if project_id is None:
         raise OlfError(
             "no Overleaf project given\n"
             "hint: pass --url <overleaf-project-url> or --id <project-id>"
         )
-    return Path(tempfile.gettempdir()).resolve() / f"olf-{project_id}"
+    return Path.home() / ".olf" / project_id
 
 
 def run(args) -> None:
@@ -496,6 +538,9 @@ def run(args) -> None:
         )
     ensure_exclude_block(checkout, exclude_lines(adopted))
 
+    if args.add_symlink:
+        add_symlink(checkout, project_id)
+
     print(f"workspace ready: {target} (project {project_id}, main {main})")
 
 
@@ -511,10 +556,15 @@ def main() -> None:
     )
     parser.add_argument("--main", help="main .tex file, relative to the checkout")
     parser.add_argument(
+        "--add-symlink",
+        action="store_true",
+        help="link the checkout at <cwd>/.olf/<project-id> (existing paths are preserved)",
+    )
+    parser.add_argument(
         "path",
         nargs="?",
         help="workspace directory (default: the cwd if it is already a workspace or an "
-        "Overleaf clone, else a temporary directory, olf-<id> under $TMPDIR)",
+        "Overleaf clone, or a local .olf/<id> link, else $HOME/.olf/<id>)",
     )
     try:
         run(parser.parse_args())

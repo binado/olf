@@ -62,8 +62,19 @@ either `latexmk` (TeX Live / MacTeX, preferred because Overleaf uses it) or
    open https://www.overleaf.com/project/<id>   # the project on overleaf.com
    ```
 
-Without a path, `init.py` uses a temporary directory (`olf-<id>` under
-`$TMPDIR`); pass one for a workspace that outlives a reboot.
+Without a path, `init.py` reuses the current workspace or a local paper link,
+otherwise it uses `$HOME/.olf/<id>/`. This location persists across sessions
+and reboots. To make the checkout discoverable from your code repo:
+
+```sh
+uv run <skills>/olf-setup/scripts/init.py --id <id> --add-symlink
+```
+
+This creates `<cwd>/.olf/<id>` pointing to `$HOME/.olf/<id>/paper` (or the
+checkout in an explicit workspace). Existing matching links are reused;
+other existing paths are left untouched and reported as errors. The link
+is excluded from the host repo's Git status locally. It does not grant
+sandbox write access to the checkout.
 
 Already have an Overleaf clone? Run `init.py` inside it to adopt it as the
 workspace.
@@ -94,9 +105,13 @@ sandbox an agent cannot edit its own `.claude` settings, which is intended.
   paper/                # the Overleaf git checkout
 ```
 
-The scripts find the workspace by walking up from `--workspace <dir>`, else the
-current directory, else `$OLF_PROJECT_DIR`. Re-running `init.py` repairs the
-setup and never overwrites values you edited in `.olf/config.toml`.
+Build and access find the workspace from `--workspace <dir-or-link>`, otherwise
+from the current directory and its ancestors (including local `.olf/<id>`
+links), then `$OLF_PROJECT_DIR`. Symlink paths are resolved before searching
+for configuration. A single local paper link is selected automatically;
+several require `--workspace .olf/<id>`. Setup can select a local link with
+`--id` or `--url`. Re-running setup repairs the workspace and preserves
+existing settings unless `--main` explicitly changes the main file.
 
 ## Exit codes
 
