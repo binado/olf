@@ -378,33 +378,112 @@ def test_auth_failure_exits_3(env):
     assert "OVERLEAF_GIT_TOKEN" in result.stderr
 
 
-def test_defaults_to_a_temp_dir_stable_per_project(env):
+def test_defaults_to_a_home_dir_stable_per_project(env):
     env.remote(ID, {"main.tex": MAIN_TEX})
-    tmp = env.path / "tmpdir"
-    tmp.mkdir()
     cwd = env.path / "elsewhere"
     cwd.mkdir()
-    result = env.init("--id", ID, cwd=cwd, TMPDIR=str(tmp))
+    result = env.init("--id", ID, cwd=cwd)
     assert result.returncode == 0, result.stderr
-    ws = tmp / f"olf-{ID}"
+    ws = env.home / ".olf" / ID
     assert (ws / "paper/main.tex").is_file()
     assert str(ws) in result.stdout
     assert not (cwd / ".olf").exists()
 
-    again = env.init("--id", ID, cwd=cwd, TMPDIR=str(tmp))
+    again = env.init("--id", ID, cwd=cwd)
     assert again.returncode == 0 and "cloned" not in again.stdout
 
 
-def test_default_inside_plain_repo_uses_temp_dir(env):
+def test_default_inside_plain_repo_uses_home_dir(env):
     env.remote(ID, {"main.tex": MAIN_TEX})
     code = env.code_repo()
-    tmp = env.path / "tmpdir"
-    tmp.mkdir()
-    result = env.init("--id", ID, cwd=code, TMPDIR=str(tmp))
+    result = env.init("--id", ID, cwd=code)
     assert result.returncode == 0, result.stderr
-    assert (tmp / f"olf-{ID}/.olf/config.toml").is_file()
+    assert (env.home / ".olf" / ID / ".olf/config.toml").is_file()
 
 
 def test_default_without_project_is_an_error(env):
     result = env.init(cwd=env.path)
     assert result.returncode == 1 and "--url" in result.stderr
+
+
+def test_checkout_link_is_reused_and_ignored_in_host_repo(env):
+    env.remote(ID, {"main.tex": MAIN_TEX})
+    code = env.code_repo()
+    exclude = code / ".git/info/exclude"
+    exclude.write_text("# user ignore\n*.bak\n")
+    result = env.init("--id", ID, "--add-symlink", cwd=code)
+    assert result.returncode == 0, result.stderr
+    link = code / ".olf" / ID
+    assert link.is_symlink()
+    assert link.resolve() == env.home / ".olf" / ID / "paper"
+    assert git(code, "status", "--porcelain") == ""
+    assert "# user ignore\n*.bak\n" in exclude.read_text()
+    before = exclude.read_text()
+    again = env.init("--add-symlink", cwd=code)
+    assert again.returncode == 0, again.stderr
+    assert "cloned" not in again.stdout
+    assert exclude.read_text() == before
+
+
+@pytest.mark.parametrize("occupied", ["file", "directory", "broken-link"])
+def test_checkout_link_preserves_conflicting_paths(env, occupied):
+    env.remote(ID, {"main.tex": MAIN_TEX})
+    link = env.path / ".olf" / ID
+    link.parent.mkdir()
+    if occupied == "file":
+        link.write_text("keep me")
+    elif occupied == "directory":
+        link.mkdir()
+    else:
+        link.symlink_to(env.path / "missing")
+    result = env.init("--id", ID, "--add-symlink")
+    assert result.returncode == 1
+    assert "path already exists" in result.stderr
+    if occupied == "file":
+        assert link.read_text() == "keep me"
+    elif occupied == "directory":
+        assert link.is_dir() and not link.is_symlink()
+    else:
+        assert link.readlink() == env.path / "missing"
+
+
+@pytest.mark.parametrize("script", ["init", "build", "grant"])
+def test_discovery_follows_custom_checkout_link(env, script):
+    ws = env.workspace()
+    code = env.code_repo()
+    result = env.init("--add-symlink", ws, cwd=code)
+    assert result.returncode == 0, result.stderr
+    nested = code / "src"
+    nested.mkdir()
+    env.fake_tool("tectonic", "exit 0")
+    run = getattr(env, script)
+    result = run(cwd=nested)
+    assert result.returncode == 0, result.stderr
+    if script == "init":
+        assert str(ws) in result.stdout
+    else:
+        result = run("--workspace", code / ".olf" / ID, cwd=env.home)
+        assert result.returncode == 0, result.stderr
+    # Also resolve when invoked from inside the checkout link.
+    result = run(cwd=code / ".olf" / ID)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("script", ["init", "build", "grant"])
+def test_multiple_checkout_links_require_selection(env, script):
+    code = env.code_repo()
+    for project_id in (ID, OTHER_ID):
+        env.remote(project_id, {"main.tex": MAIN_TEX})
+        result = env.init("--id", project_id, "--add-symlink", cwd=code)
+        assert result.returncode == 0, result.stderr
+    result = getattr(env, script)(cwd=code)
+    assert result.returncode == 1
+    assert "multiple linked papers" in result.stderr
+    if script == "init":
+        selected = env.init("--id", ID, cwd=code)
+        assert selected.returncode == 0, selected.stderr
+        assert "cloned" not in selected.stdout
+    else:
+        env.fake_tool("tectonic", "exit 0")
+        selected = getattr(env, script)("--workspace", code / ".olf" / ID, cwd=code)
+        assert selected.returncode == 0, selected.stderr

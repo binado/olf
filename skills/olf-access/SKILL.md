@@ -12,9 +12,14 @@ directory plus directories the user has explicitly allowed.
 
 ## Find the paper
 
+- A local `.olf/<id>` symlink created with setup's `--add-symlink` points
+  to the checkout. Build and access discover a single link from the current
+  directory or its ancestors; with several, pass `--workspace .olf/<id>`.
+  Resolving the link locates the workspace configuration. A symlink does
+  not grant sandbox access to its target.
 - `$OLF_PROJECT_DIR` is the checkout directory. It is set when the user ran
   `grant.py` for your repo (below). Work there using absolute paths.
-- Otherwise ask the user where the workspace is (the directory holding
+- If neither a local link nor the environment identifies the paper, ask where the workspace is (the directory holding
   `.olf/config.toml`). The scripts take `--workspace <dir>` when you aren't
   inside it, e.g. `build.py --workspace <dir>` in the olf-build skill.
 
@@ -33,7 +38,7 @@ Don't retry the write, copy files into the repo and back, or ask the user to
 disable the sandbox. You can't grant yourself access: your own `.claude`
 settings are write-protected on purpose, so the human has to run it.
 
-`grant.py` flags: `--workspace DIR` (default: cwd, else `$OLF_PROJECT_DIR`),
+`grant.py` flags: `--workspace DIR` (default: cwd/local links, else `$OLF_PROJECT_DIR`; checkout links are accepted),
 `--repo DIR` (default: the git repo containing the cwd). It's a no-op inside
 the workspace, refuses to touch invalid JSON, and exits 2 outside a workspace.
 

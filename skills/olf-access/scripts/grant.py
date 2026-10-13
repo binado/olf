@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -53,8 +54,28 @@ def git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProces
     return result
 
 
+def workspace_root(start: Path, *, follow_links: bool = True) -> Path | None:
+    """Resolve checkout symlinks and discover an unambiguous local paper link."""
+    start = start.resolve()
+    for directory in (start, *start.parents):
+        if (directory / ".olf" / "config.toml").is_file():
+            return directory
+        if follow_links:
+            roots = {
+                root
+                for link in (directory / ".olf").glob("*")
+                if re.fullmatch(r"[0-9a-f]{24}", link.name) and link.is_symlink()
+                if (root := workspace_root(link, follow_links=False)) is not None
+            }
+            if len(roots) > 1:
+                raise OlfError("multiple linked papers; pass --workspace <dir>")
+            if roots:
+                return roots.pop()
+    return None
+
+
 def discover(workspace: str | None = None) -> tuple[Path, Path]:
-    """Find the workspace: ``--workspace``, else the cwd, else ``$OLF_PROJECT_DIR``.
+    """Find the workspace: explicit path, cwd/local links, then ``$OLF_PROJECT_DIR``.
 
     Returns
     -------
@@ -70,15 +91,14 @@ def discover(workspace: str | None = None) -> tuple[Path, Path]:
     if not workspace and os.environ.get("OLF_PROJECT_DIR"):
         starts.append(Path(os.environ["OLF_PROJECT_DIR"]))
     for start in starts:
-        start = Path(os.path.abspath(start))
-        for directory in (start, *start.parents):
+        directory = workspace_root(start)
+        if directory is not None:
             config = directory / ".olf" / "config.toml"
-            if config.is_file():
-                try:
-                    project_dir = tomllib.loads(config.read_text()).get("project_dir", "paper")
-                except tomllib.TOMLDecodeError as e:
-                    raise OlfError(f"invalid {config}: {e}") from None
-                return directory, Path(os.path.normpath(directory / project_dir))
+            try:
+                project_dir = tomllib.loads(config.read_text()).get("project_dir", "paper")
+            except tomllib.TOMLDecodeError as e:
+                raise OlfError(f"invalid {config}: {e}") from None
+            return directory, Path(os.path.normpath(directory / project_dir))
     raise OlfError(
         f"not inside an olf workspace (no .olf/config.toml in {starts[0]} or its parents)\n"
         "hint: pass --workspace <dir> or set OLF_PROJECT_DIR",
@@ -191,7 +211,10 @@ def main() -> None:
         description="Persistently let Claude Code in a repo write the Overleaf checkout."
     )
     parser.add_argument("--repo", help="repo the agent runs in (default: the cwd's git repo)")
-    parser.add_argument("--workspace", help="workspace directory (default: cwd, $OLF_PROJECT_DIR)")
+    parser.add_argument(
+        "--workspace",
+        help="workspace or checkout link (default: cwd/local links, $OLF_PROJECT_DIR)",
+    )
     try:
         run(parser.parse_args())
     except OlfError as e:

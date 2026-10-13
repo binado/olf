@@ -14,15 +14,16 @@ plain `python3` >= 3.11: the script is stdlib-only) and `git`.
 uv run <this-skill-dir>/scripts/init.py --url https://www.overleaf.com/project/<id> ~/papers/dark-matter
 ```
 
-Run it **outside any other git repo**: a workspace inside a code repo is
-refused (exit 7). Flags:
+The default workspace lives outside your code repo. An explicit workspace
+inside a non-Overleaf git repo is refused (exit 7). Flags:
 
 | Flag | Meaning |
 |---|---|
 | `--url URL` / `--id ID` | the project: any `overleaf.com/project/<id>` or `git.overleaf.com/<id>` URL, or the 24-hex ID. Share links (`/read/…`, `/edit/…`) don't contain the ID and are rejected |
 | `--token TOKEN` | git token for the clone; defaults to `$OVERLEAF_GIT_TOKEN` |
 | `--main FILE` | main `.tex` file relative to the checkout (otherwise `main.tex`, else the only file with `\documentclass`) |
-| `[path]` | workspace directory. Default: the cwd if it is already a workspace or an Overleaf clone (re-run = repair), otherwise a temporary directory `olf-<id>` under `$TMPDIR` (stable per project, but lost on reboot: pass a path for a lasting workspace). The workspace path is printed at the end |
+| `--add-symlink` | link the checkout at `<cwd>/.olf/<id>`; reuse a matching link and refuse to replace any other existing path. In a Git repo, locally ignore the link via `.git/info/exclude` |
+| `[path]` | workspace directory. Default: the cwd if it is already a workspace or an Overleaf clone (re-run = repair), otherwise a locally linked workspace, or `$HOME/.olf/<id>` (persistent and reused across sessions). The workspace path is printed at the end |
 
 ## What it does
 
@@ -36,8 +37,15 @@ refused (exit 7). Flags:
 - Configures a credential helper that reads `$OVERLEAF_GIT_TOKEN` from the
   environment. The token is never written to disk or argv.
 - Writes `.olf/config.toml` once (`project_id`, `project_dir`, `[build]`
-  `main`/`compiler`/`engine`). It never overwrites existing values, so edit
+  `main`/`compiler`/`engine`). It preserves existing values unless `--main` explicitly changes the main file; edit
   `compiler` there to match the Overleaf project settings.
+
+A local `.olf/<id>` link points to the checkout (usually `$HOME/.olf/<id>/paper`),
+not the workspace root. Setup, build, and access resolve the link to locate
+the workspace configuration. From the host directory or a subdirectory, a
+single linked paper is discovered automatically. With several links, pass
+`--id`/`--url` to setup, or `--workspace .olf/<id>` to build/access. Symlinks
+do not grant sandbox write access to their targets; see olf-access.
 
 It is idempotent. **Re-running it repairs a workspace** (missing checkout,
 missing hook, lost git config) from anywhere inside the workspace.

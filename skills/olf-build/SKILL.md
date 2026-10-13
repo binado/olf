@@ -14,7 +14,10 @@ uv run <this-skill-dir>/scripts/build.py [--json] [--engine auto|latexmk|tectoni
 ```
 
 It works from anywhere inside the workspace. From elsewhere, pass
-`--workspace <dir>` or rely on `$OLF_PROJECT_DIR` (see the olf-access skill).
+`--workspace <dir-or-link>` or rely on a single local `.olf/<id>` checkout
+link or `$OLF_PROJECT_DIR` (see the olf-access skill). Links are discovered
+from the current directory and its ancestors. If several papers are linked,
+select one with `--workspace .olf/<id>`.
 It is stdlib-only Python (>= 3.11): `python3 build.py` works without `uv`.
 
 | Exit code | Meaning |
